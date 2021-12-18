@@ -340,6 +340,10 @@ project/plugins/project/
 hs_err_pid*
 
 # vscode #
-.metals
 .history
 .vscode
+
+# vscode metals ext #
+.metals
+**/metals.sbt
+.bloop
