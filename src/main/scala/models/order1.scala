@@ -3,7 +3,7 @@ package models
 import chisel3._
 import chisel3.util._
 
-import ram.ByteWriteTDPRamFWB
+import ram._
 import state.StateShiftLut
 import state.StaticStateMap
 import coder.BitProbBundle
@@ -56,78 +56,85 @@ class ContextMap(CtxWidth : Int) extends Module {
 
   val nibble = io.in.bits.nibble
   val context = io.in.bits.context
+  val valid = io.in.valid
 
   val nibble_d = RegNext(nibble)
   val context_d = RegNext(context)
-  val valid_d = RegNext(io.in.valid, false.B)
+  val valid_d = RegNext(valid, false.B)
 
   val nibble_dd = RegNext(nibble_d)
   val context_dd = RegNext(context_d)
   val valid_dd = RegNext(valid_d, false.B)
 
-  val ram = Module(new ByteWriteTDPRamFWB(16, CtxWidth))
+  val harzared1 = context_d === context_dd && valid_d && valid_dd
+  val harzared2 = context === context_dd && valid && valid_dd
+  val harzared2_d = RegNext(harzared2, false.B)
 
+  // duel port, A write first, B read only
+  val ram = Module(new ByteWriteTDPRam(16, CtxWidth))
+
+  val doa_d = RegNext(ram.io.doa)
   ram.io.enb := io.in.valid
   ram.io.addrb := context
 
-  val dout = ram.io.dob
-
-  val line = (0 until 16).map(i => dout(8*i+7,8*i))
+  val dout = Reg(UInt((8 * 16).W))
   
-  val checksum = line(0)
-  val checksumNxt = context_d(7,0)
+  val line_split = (0 until 16).map(i => dout(8*i+7,8*i))
+  
+  val checksum = line_split(0)
+  val checksumNxt = context_dd(7,0)
   val hit = checksum === checksumNxt
 
-  val state0sel = line(1)
-  val state0 = Mux(hit, state0sel, 0.U)
-  val state0Nxt = StateShiftLut(state0, nibble_d(3))
+  val line = (0 until 16).map(i => Mux(hit, dout(8*i+7,8*i), 0.U))
+
+  val state0 = line(1)
+  val state0Nxt = Seq(StateShiftLut(state0, nibble_dd(3)))
 
   val state1group = (2 until 4).map(line(_))
   val state1OH = UIntToOH(nibble(3))
-  val state1sel = Mux1H(state1OH, state1group)
-  val state1 = Mux(hit, state1sel, 0.U)
-  val state1Nxt = StateShiftLut(state1, nibble_d(2))
+  val state1 = Mux1H(state1OH, state1group)
+  val state1Nxt = state1group.map(StateShiftLut(_, nibble_dd(2))).zipWithIndex.map{case (s,i) => Mux(state1OH(i), s, state1group(i))}.reverse
 
   val state2group = (4 until 8).map(line(_))
   val state2OH = UIntToOH(nibble(3,2))
-  val state2sel = Mux1H(state2OH, state2group)
-  val state2 = Mux(hit, state2sel, 0.U)
-  val state2Nxt = StateShiftLut(state2, nibble_d(1))
+  val state2 = Mux1H(state2OH, state2group)
+  val state2Nxt = state2group.map(StateShiftLut(_, nibble_dd(1))).zipWithIndex.map{case (s,i) => Mux(state2OH(i), s, state2group(i))}.reverse
 
   val state3group = (8 until 16).map(line(_))
   val state3OH = UIntToOH(nibble(3,1))
-  val state3sel = Mux1H(state3OH, state3group)
-  val state3 = Mux(hit, state3sel, 0.U)
-  val state3Nxt = StateShiftLut(state3, nibble_d(0))
+  val state3 = Mux1H(state3OH, state3group)
+  val state3Nxt = state3group.map(StateShiftLut(_, nibble_dd(0))).zipWithIndex.map{case (s,i) => Mux(state3OH(i), s, state3group(i))}.reverse
 
-  val lineNxt = Cat(Seq(
-    state3Nxt,state3Nxt,state3Nxt,state3Nxt,state3Nxt,state3Nxt,state3Nxt,state3Nxt,
-    state2Nxt,state2Nxt,state2Nxt,state2Nxt,
-    state1Nxt,state1Nxt,
-    state0Nxt,
-    checksumNxt
-  ))
+  val lineNxt = Cat(state3Nxt ++ state2Nxt ++ state1Nxt ++ state0Nxt ++ Seq(checksumNxt))
   val wen = Cat(Seq(state3OH,state2OH,state1OH,1.U(1.W),1.U(1.W)))
 
-  ram.io.ena := valid_d
+  ram.io.ena := valid_dd
   ram.io.wea := wen
-  ram.io.addra := context_d
+  ram.io.addra := context_dd
   ram.io.dina := lineNxt
 
   val outSel = RegInit(false.B)
-  when(valid_d) {
+  when(valid_dd) {
     outSel := ~outSel
+  }
+
+  when(harzared1) {
+    dout := lineNxt
+  }.elsewhen(harzared2_d) {
+    dout := doa_d
+  }.otherwise{
+    dout := ram.io.dob
   }
 
   val probs = Seq(state0, state1, state2, state3).map(StaticStateMap(_))
   for(i <- 0 until 4) {
     io.out(i).bits.prob := probs(i)
-    io.out(i).bits.bit := nibble_d(3 - i)
-    io.out(i).valid := valid_d && ~outSel
+    io.out(i).bits.bit := nibble_dd(3 - i)
+    io.out(i).valid := valid_dd && ~outSel
 
     io.out(i + 4).bits.prob := probs(i)
-    io.out(i + 4).bits.bit := nibble_d(3 - i)
-    io.out(i + 4).valid := valid_d && outSel
+    io.out(i + 4).bits.bit := nibble_dd(3 - i)
+    io.out(i + 4).valid := valid_dd && outSel
   }
 
 }

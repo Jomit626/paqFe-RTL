@@ -40,6 +40,8 @@ class Order1Spec
           c.io.in.valid.poke(true.B)
         }
         c.clock.step(1)
+        c.io.in.valid.poke(false.B)
+        c.clock.step(8)
       }.join
     }
   }
