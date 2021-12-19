@@ -73,7 +73,6 @@ class ContextMap(CtxWidth : Int) extends Module {
   // duel port, A write first, B read only
   val ram = Module(new ByteWriteTDPRam(16, CtxWidth))
 
-  val doa_d = RegNext(ram.io.doa)
   ram.io.enb := io.in.valid
   ram.io.addrb := context
 
@@ -91,17 +90,17 @@ class ContextMap(CtxWidth : Int) extends Module {
   val state0Nxt = Seq(StateShiftLut(state0, nibble_dd(3)))
 
   val state1group = (2 until 4).map(line(_))
-  val state1OH = UIntToOH(nibble(3))
+  val state1OH = UIntToOH(nibble_dd(3))
   val state1 = Mux1H(state1OH, state1group)
   val state1Nxt = state1group.map(StateShiftLut(_, nibble_dd(2))).zipWithIndex.map{case (s,i) => Mux(state1OH(i), s, state1group(i))}.reverse
 
   val state2group = (4 until 8).map(line(_))
-  val state2OH = UIntToOH(nibble(3,2))
+  val state2OH = UIntToOH(nibble_dd(3,2))
   val state2 = Mux1H(state2OH, state2group)
   val state2Nxt = state2group.map(StateShiftLut(_, nibble_dd(1))).zipWithIndex.map{case (s,i) => Mux(state2OH(i), s, state2group(i))}.reverse
 
   val state3group = (8 until 16).map(line(_))
-  val state3OH = UIntToOH(nibble(3,1))
+  val state3OH = UIntToOH(nibble_dd(3,1))
   val state3 = Mux1H(state3OH, state3group)
   val state3Nxt = state3group.map(StateShiftLut(_, nibble_dd(0))).zipWithIndex.map{case (s,i) => Mux(state3OH(i), s, state3group(i))}.reverse
 
@@ -121,17 +120,22 @@ class ContextMap(CtxWidth : Int) extends Module {
   when(harzared1) {
     dout := lineNxt
   }.elsewhen(harzared2_d) {
-    dout := doa_d
+    dout := ram.io.doa
   }.otherwise{
     dout := ram.io.dob
   }
 
+  val first = RegEnable(false.B, true.B, io.out(0).valid)
   val probs = Seq(state0, state1, state2, state3).map(StaticStateMap(_))
+
   for(i <- 0 until 4) {
-    io.out(i).bits.prob := probs(i)
+    if(i == 0)
+      io.out(i).bits.prob := Mux(first, 2048.U, probs(i))
+    else 
+      io.out(i).bits.prob := probs(i)
     io.out(i).bits.bit := nibble_dd(3 - i)
     io.out(i).valid := valid_dd && ~outSel
-
+    
     io.out(i + 4).bits.prob := probs(i)
     io.out(i + 4).bits.bit := nibble_dd(3 - i)
     io.out(i + 4).valid := valid_dd && outSel
