@@ -6,7 +6,8 @@ import chisel3.util._
 import ram._
 import state.StateShiftLut
 import state.StaticStateMap
-import coder.BitProbBundle
+
+import types._
 
 class Byte2Nibble(n : Int) extends Module {
   val io = IO(new Bundle {
@@ -27,24 +28,6 @@ class Byte2Nibble(n : Int) extends Module {
     io.out(i).bits.nibble := RegNext(Mux(state === s1, io.in.bits.byte(7,4), io.in.bits.byte(3,0)))
     io.out(i).valid := RegNext(io.in.valid, 0.U)
   }
-}
-
-
-class ByteBundle extends Bundle {
-  val byte = Output(UInt(8.W))
-}
-
-class NibbleBundle extends Bundle {
-  val nibble = Output(UInt(4.W))
-}
-
-class CtxBundle(CtxWidth : Int) extends Bundle {
-  val context = Output(UInt(CtxWidth.W))
-}
-
-class NibbleCtxBundle(CtxWidth : Int) extends Bundle {
-  val nibble = Output(UInt(4.W))
-  val context = Output(UInt(CtxWidth.W))
 }
 
 class ContextMap(CtxWidth : Int) extends Module {

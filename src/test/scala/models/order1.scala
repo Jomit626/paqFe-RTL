@@ -14,7 +14,7 @@ import scala.io.Source
 import java.io._
 import com.github.tototoshi.csv._
 
-import coder.BitProbBundle
+import types._
 
 class Order1Spec
     extends FlatSpec
