@@ -31,15 +31,8 @@ class Order1Spec
     val output_file = line(2)
 
     it should "work with " + test_name in {
-      println("read", input_file, "test", output_file)
-      val is = new FileInputStream(input_file)
-      val reader = CSVReader.open(new File(output_file))
-
-      val bitProbs = reader.all().map{line => (line(0).toInt, line(1).toInt)}.toIndexedSeq
-      assert(bitProbs.length % 8 == 0)
-
       test(new Order1)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
       
         testInit(c)
         testOrder1(c, input_file, output_file)
@@ -50,7 +43,7 @@ class Order1Spec
 
   it should "work " in {
     test(new Order1)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
 
       testInit(c)
       for(line <- db.data) {

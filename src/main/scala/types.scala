@@ -3,6 +3,12 @@ package types
 import chisel3._
 import chisel3.util._
 
+class ByteIdxBundle extends Bundle {
+  val idx = Output(UInt(8.W))
+  val byte = Output(UInt(8.W))
+  val last = Output(Bool())
+}
+
 class ByteBundle extends Bundle {
   val byte = Output(UInt(8.W))
   val last = Output(Bool())
