@@ -1,21 +1,24 @@
 import org.scalatest._
 
 import chisel3._
-import chiseltest._
 import chisel3.experimental.BundleLiterals._
 
+import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.WriteVcdAnnotation
 import chiseltest.internal.VerilatorBackendAnnotation
 
 import verifydata._
-import types.ByteBundle
+import types._
+
+import LocalHelpers._
+import testhelpers.Helpers._
 
 class CoderAribiterSpec extends FlatSpec
   with ChiselScalatestTester {
   
   behavior of "CoderAribiter"
-  it should "alskdfjalsjdf" in {
+  it should "merge 8 stream into 1 tagged with idx and set last singal currectly" in {
     test(new CoderAribiter)
       .withAnnotations(Seq(WriteVcdAnnotation)) {c => 
       for(i <- 0 until 8) {
@@ -70,11 +73,10 @@ class CoderAribiterSpec extends FlatSpec
     }
   }
 }
-import LocalHelpers._
-import java.io._
-class TestCompressrorSpec extends FlatSpec
+
+class CompressrorNoCDCSpec extends FlatSpec
   with ChiselScalatestTester {
-  behavior of "TestCompressror"
+  behavior of "Compressror with out CDC"
 
   val db = new VerifyData("../paqFe/verify/db/all")
   for(line <- db.data) {
@@ -82,34 +84,34 @@ class TestCompressrorSpec extends FlatSpec
     val input_file = line(1)
     val output_file = line(2)
 
-    it should "work with " + test_name in {
-      test(new TestCompressror)
+    it should "match software model with data: " + test_name in {
+      test(new CompressrorNoCDC)
       .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        init(c)
-        waitInitDone(c)
-        testCompressror(c, input_file, output_file)
+        dutTestInit(c)
+        statusWaitInitDone(c.clock, c.io.status)
+        dutTest(c, input_file, output_file)
       } 
     }
   }
 
-  it should "work with" in {
-      test(new TestCompressror)
+  it should "take multiple streams without reset between and output currect data" in {
+      test(new CompressrorNoCDC)
       .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        init(c)
+        dutTestInit(c)
         for(line <- db.data) {
           val test_name = line(0)
           val input_file = line(1)
           val output_file = line(2)
 
-          waitInitDone(c)
-          testCompressror(c, input_file, output_file)
+          statusWaitInitDone(c.clock, c.io.status)
+          dutTest(c, input_file, output_file)
         }
       } 
     }
 }
 
 private object LocalHelpers {
-  def init(c : TestCompressror) = {
+  def dutTestInit(c : CompressrorNoCDC) = {
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)
 
@@ -117,29 +119,19 @@ private object LocalHelpers {
     c.io.out.setSinkClock(c.clock)
   }
 
-  def waitInitDone(c : TestCompressror) {
-    c.clock.setTimeout(1000 + (1 << 12))
-    var done = false
-    while(!done) {
-      c.clock.step()
-      done = c.io.status.initDone.peek().litToBoolean
-    }
-    c.clock.setTimeout(1000)
-  }
-
-  def testCompressror(c : TestCompressror, input_file : String, output_file : String) = {
+  def dutTest(c : CompressrorNoCDC, input_file : String, output_file : String) = {
     val is = new ByteStream(input_file)
     val oss = (0 until 8).map(i => new ByteStream(output_file + s".$i"))
 
     fork {
-      var pack = is.getByte()
       val bd = new ByteBundle()
-      while(!pack._2) {
-        c.io.in.enqueue(bd.Lit(_.byte -> (pack._1 & 0xFF).U, _.last -> pack._2.B))
-        pack = is.getByte()
-        c.clock.step(2)
+      var flag = true
+      while(flag) {
+        val (byte, last) = is.getByte()
+        c.io.in.enqueue(bd.Lit(_.byte -> (byte & 0xFF).U, _.last -> last.B))
+        
+        flag = !last
       }
-      c.io.in.enqueue(bd.Lit(_.byte -> (pack._1 & 0xFF).U, _.last -> pack._2.B))
     }.fork {
       var last = false
       c.io.out.ready.poke(true.B)

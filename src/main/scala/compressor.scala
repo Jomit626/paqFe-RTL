@@ -61,7 +61,7 @@ object Model2CoderCrossing {
   }
 }
 
-class TestCompressror extends Module {
+class CompressrorNoCDC extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new ByteBundle()))
     val out = DecoupledIO(new ByteIdxBundle())
