@@ -4,9 +4,10 @@ import chisel3._
 import chisel3.experimental.BundleLiterals._
 
 import chiseltest._
-import chiseltest.experimental.TestOptionBuilder._
-import chiseltest.internal.WriteVcdAnnotation
-import chiseltest.internal.VerilatorBackendAnnotation
+
+import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import verifydata._
 import types._
@@ -14,7 +15,7 @@ import types._
 import LocalHelpers._
 import testhelpers.Helpers._
 
-class CoderAribiterSpec extends FlatSpec
+class CoderAribiterSpec extends AnyFlatSpec
   with ChiselScalatestTester {
   
   behavior of "CoderAribiter"
@@ -74,7 +75,7 @@ class CoderAribiterSpec extends FlatSpec
   }
 }
 
-class CompressrorNoCDCSpec extends FlatSpec
+class CompressrorNoCDCSpec extends AnyFlatSpec
   with ChiselScalatestTester {
   behavior of "Compressror with out CDC"
 

@@ -1,15 +1,14 @@
 package models
 
-import org.scalatest._
-
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.BundleLiterals._
 
 import chiseltest._
-import chiseltest.experimental.TestOptionBuilder._
-import chiseltest.internal.WriteVcdAnnotation
-import chiseltest.internal.VerilatorBackendAnnotation
+
+import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import verifydata._
 import types._
@@ -42,7 +41,7 @@ class Order1TestWapper extends Module {
 }
 
 class Order1Spec
-    extends FlatSpec
+    extends AnyFlatSpec
     with ChiselScalatestTester
     with Matchers {
   behavior of "Order1 and Byte2Nibble"
@@ -85,7 +84,7 @@ class Order1Spec
 
 
 private object LocalHelpers {
-  def dutTestInit(c : Order1TestWapper) {
+  def dutTestInit(c : Order1TestWapper) = {
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)
     for(i <- 0 until 8) {

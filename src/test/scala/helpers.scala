@@ -6,7 +6,7 @@ import chiseltest._
 import types._
 
 object Helpers {
-  def statusWaitInitDone(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12)) {
+  def statusWaitInitDone(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12)) = {
     clock.setTimeout(1000 + timeout)
     var done = false
     while(!done) {

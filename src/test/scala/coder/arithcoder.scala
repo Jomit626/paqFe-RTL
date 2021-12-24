@@ -1,14 +1,13 @@
 package coder
 
-import org.scalatest._
-
 import chisel3._
+import chisel3.util._
 import chisel3.experimental.BundleLiterals._
 
 import chiseltest._
-import chiseltest.experimental.TestOptionBuilder._
-import chiseltest.internal.WriteVcdAnnotation
-import chiseltest.internal.VerilatorBackendAnnotation
+import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import verifydata._
 import types._
@@ -48,9 +47,8 @@ class ArithCoderBehavior {
 import LocalHelpers._
 
 class ArithCoderSpec
-    extends FlatSpec
-    with ChiselScalatestTester
-    with Matchers {
+    extends AnyFlatSpec
+    with ChiselScalatestTester {
   behavior of "ArithCoder"
 
   val db = new VerifyData("../paqFe/verify/db/coder-db")
@@ -87,7 +85,7 @@ class ArithCoderSpec
 }
 
 private object LocalHelpers {
-  def dutTestInit(c : ArithCoder) {
+  def dutTestInit(c : ArithCoder) = {
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)
     c.io.out.initSink()
