@@ -42,8 +42,8 @@ object Model2CoderCrossing {
             mClock : Clock, mRest : Bool,
             cClock : Clock, cRest : Bool)
      : Vec[DecoupledIO[BitProbBundle]] = {
-    val outs = Vec(ins.length, new DecoupledIO(new BitProbBundle))
-    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 8))}
+    val outs = Wire(Vec(ins.length, new DecoupledIO(new BitProbBundle)))
+    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 32))}
 
     (0 until ins.length).map{ i =>
       queues(i).io.enq_clock := mClock
@@ -88,5 +88,50 @@ class CompressrorNoCDC extends Module {
   io.status := order1.io.status
 }
 
+class Compressor extends RawModule {
+  val model_clk = IO(Input(Clock()))
+  val model_rst = IO(Input(Bool()))
 
+  val model_in = IO(Flipped(DecoupledIO(new ByteBundle())))
+  val model_status = IO(new StatusBundle)
+
+  val coder_clk = IO(Input(Clock()))
+  val coder_rst = IO(Input(Bool()))
+  
+  val coder_out = IO(DecoupledIO(new ByteIdxBundle()))
+
+  var coders : Seq[ArithCoder] = null
+
+  withClockAndReset(coder_clk, coder_rst) {
+    coders = Seq.fill(8) {Module(new ArithCoder())}
+    val arib = Module(new CoderAribiter)
+
+    (0 until 8).map{ i =>
+      arib.io.in(i) <> coders(i).io.out
+    }
+    coder_out <> arib.io.out
+  }
+
+  var order : Order1 = null
+
+  withClockAndReset(model_clk, model_rst) {
+    val byte2nibble = Module(new Byte2Nibble(1))
+    order = Module(new Order1())
+
+    byte2nibble.io.in <> model_in
+    order.io.in <> byte2nibble.io.out(0)
+
+    model_status := order.io.status
+  }
+
+  withClockAndReset(coder_clk, coder_rst) {
+    val modelOut = Model2CoderCrossing(order.io.out, model_clk, model_rst, coder_clk, coder_rst)
+    
+    (0 until 8).map{ i =>
+      coders(i).io.in.bits := RegNext(modelOut(i).bits)
+      coders(i).io.in.valid := RegNext(modelOut(i).valid, false.B)
+      modelOut(i).ready := true.B
+    }
+  }
+}
 
