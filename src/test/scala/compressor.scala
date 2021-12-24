@@ -84,16 +84,28 @@ class TestCompressrorSpec extends FlatSpec
 
     it should "work with " + test_name in {
       test(new TestCompressror)
-      .withAnnotations(Seq(WriteVcdAnnotation)) { c =>
-      
+      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
         init(c)
+        waitInitDone(c)
         testCompressror(c, input_file, output_file)
-
       } 
     }
-
-    
   }
+
+  it should "work with" in {
+      test(new TestCompressror)
+      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+        init(c)
+        for(line <- db.data) {
+          val test_name = line(0)
+          val input_file = line(1)
+          val output_file = line(2)
+
+          waitInitDone(c)
+          testCompressror(c, input_file, output_file)
+        }
+      } 
+    }
 }
 
 private object LocalHelpers {
@@ -103,6 +115,16 @@ private object LocalHelpers {
 
     c.io.out.initSink()
     c.io.out.setSinkClock(c.clock)
+  }
+
+  def waitInitDone(c : TestCompressror) {
+    c.clock.setTimeout(1000 + (1 << 12))
+    var done = false
+    while(!done) {
+      c.clock.step()
+      done = c.io.status.initDone.peek().litToBoolean
+    }
+    c.clock.setTimeout(1000)
   }
 
   def testCompressror(c : TestCompressror, input_file : String, output_file : String) = {
@@ -115,6 +137,7 @@ private object LocalHelpers {
       while(!pack._2) {
         c.io.in.enqueue(bd.Lit(_.byte -> (pack._1 & 0xFF).U, _.last -> pack._2.B))
         pack = is.getByte()
+        c.clock.step(2)
       }
       c.io.in.enqueue(bd.Lit(_.byte -> (pack._1 & 0xFF).U, _.last -> pack._2.B))
     }.fork {
@@ -131,7 +154,7 @@ private object LocalHelpers {
         val (byte, streamEnd) = oss(idx).getByte()
 
         last = c.io.out.bits.last.peek().litToBoolean
-        //c.io.out.bits.byte.expect((byte & 0xFF).U)
+        c.io.out.bits.byte.expect((byte & 0xFF).U)
 
         c.clock.step()
       }

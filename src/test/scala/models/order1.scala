@@ -114,6 +114,7 @@ private object LocalHelpers {
           c.clock.step()
 
           c.io.in.valid.poke(false.B)
+          c.io.in.bits.last.poke(false.B)
         }
         n = is.read(buf)
       }

@@ -25,8 +25,8 @@ class Byte2Nibble(n : Int) extends Module {
   io.in.ready := state === s1
 
   for (i <- 0 until n) {
-    io.out(i).bits.nibble := RegNext(Mux(state === s1, io.in.bits.byte(7,4), io.in.bits.byte(3,0)))
-    io.out(i).bits.last := RegNext(io.in.bits.last && state === s0)
+    io.out(i).bits.nibble := RegNext(Mux(state === s0, io.in.bits.byte(7,4), io.in.bits.byte(3,0)))
+    io.out(i).bits.last := RegNext(io.in.bits.last)
     io.out(i).valid := RegNext(io.in.valid, 0.U)
   }
 }

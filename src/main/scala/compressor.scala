@@ -65,6 +65,8 @@ class TestCompressror extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new ByteBundle()))
     val out = DecoupledIO(new ByteIdxBundle())
+
+    val status = new StatusBundle
   })
 
   val byte2nibble = Module(new Byte2Nibble(1))
@@ -82,6 +84,8 @@ class TestCompressror extends Module {
   }
 
   io.out <> arib.io.out
+
+  io.status := order1.io.status
 }
 
 
