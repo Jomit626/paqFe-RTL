@@ -347,3 +347,7 @@ hs_err_pid*
 .metals
 **/metals.sbt
 .bloop
+
+# viavdo logs
+*.jou
+*.log

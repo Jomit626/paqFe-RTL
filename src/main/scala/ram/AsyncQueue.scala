@@ -145,8 +145,3 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends Module {
   io.enq <> source.io.enq
   sink.io.deq <> io.deq
 }
-
-import chisel3.stage.ChiselStage
-object VerilogMain extends App {
-  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(9.W), 16))
-}

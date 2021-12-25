@@ -51,7 +51,7 @@ class ArithCoderSpec
     with ChiselScalatestTester {
   behavior of "ArithCoder"
 
-  val db = new VerifyData("../paqFe/verify/db/coder-db")
+  val db = new VerifyData("./paqFe/verify/db/coder")
   for(line <- db.data) {
     val test_name = line(0)
     val input_file = line(1)
