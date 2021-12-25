@@ -69,12 +69,12 @@ class AsyncQueueSink[T <: Data](gen : T, AddrWidth : Int) extends Module {
   })
 
   val ren = io.deq.fire
-  val (raddr, rgray) = GrayCounter(AddrWidth, ren)
+  val (raddr, rgray) = GrayCounter(AddrWidth + 1, ren)
   val wgray = Synchronizer(io.wgray)
 
   val rempty = rgray === wgray
 
-  io.deq.valid := RegNext(rempty, false.B)
+  io.deq.valid := RegNext(~rempty, false.B)
   io.deq.bits := io.rdata
 
   io.raddr := raddr
@@ -133,14 +133,14 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends Module {
   mem.io.raddr := sink.io.raddr
   sink.io.rdata := mem.io.rdata
 
-  sink.clock := io.enq_clock
-  sink.reset := io.enq_reset
+  sink.clock := io.deq_clock
+  sink.reset := io.deq_reset
 
-  source.clock := io.deq_clock
-  source.reset := io.deq_reset
+  source.clock := io.enq_clock
+  source.reset := io.enq_reset
 
   source.io.rgray := sink.io.rgray
-  sink.io.wgray := source.io.waddr
+  sink.io.wgray := source.io.wgray
 
   io.enq <> source.io.enq
   sink.io.deq <> io.deq
@@ -148,5 +148,5 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends Module {
 
 import chisel3.stage.ChiselStage
 object VerilogMain extends App {
-  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(8.W), 16))
+  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(9.W), 16))
 }
