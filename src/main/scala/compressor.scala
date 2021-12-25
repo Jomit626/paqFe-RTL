@@ -135,3 +135,7 @@ class Compressor extends RawModule {
   }
 }
 
+import chisel3.stage.ChiselStage
+object GetCompressorVerilog extends App {
+  (new ChiselStage).emitVerilog(new Compressor)
+}

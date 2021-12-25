@@ -46,7 +46,7 @@ class Order1Spec
     with Matchers {
   behavior of "Order1 and Byte2Nibble"
 
-  val db = new VerifyData("../paqFe/verify/db/order1-db")
+  val db = new VerifyData("./paqFe/verify/db/order1")
   for(line <- db.data) {
     val data_name = line(0)
     val input_file = line(1)

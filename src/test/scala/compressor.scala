@@ -79,7 +79,7 @@ class CompressrorNoCDCSpec extends AnyFlatSpec
   with ChiselScalatestTester {
   behavior of "Compressror with out CDC"
 
-  val db = new VerifyData("../paqFe/verify/db/all")
+  val db = new VerifyData("./paqFe/verify/db/all")
   for(line <- db.data) {
     val test_name = line(0)
     val input_file = line(1)

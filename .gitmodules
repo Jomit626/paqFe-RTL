@@ -1,0 +1,3 @@
+[submodule "paqFe"]
+	path = paqFe
+	url = git@github.com:Jomit626/paqFe.git
