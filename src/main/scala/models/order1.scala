@@ -56,7 +56,7 @@ class ContextMap(CtxWidth : Int) extends Module {
 
   val io = IO(new Bundle{
     val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
-    val out = Vec(8, ValidIO(new BitProbBundle()))
+    val out = ValidIO(Vec(4, new BitProbBundle()))
 
     val status = new StatusBundle
   })
@@ -126,11 +126,6 @@ class ContextMap(CtxWidth : Int) extends Module {
   ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
   ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt, 0.U)
   
-  val outSel = RegInit(false.B)
-  when(valid_dd) {
-    outSel := ~outSel
-  }
-
   when(harzared1) {
     dout := lineNxt
   }.elsewhen(harzared2_d) {
@@ -139,26 +134,77 @@ class ContextMap(CtxWidth : Int) extends Module {
     dout := ram.io.dob
   }
 
-  val first = RegInit(true.B)
-  first := first ^ ((first && io.out(0).valid) | (~first && last_dd))
   val probs = Seq(state0, state1, state2, state3).map(StaticStateMap(_))
 
   for(i <- 0 until 4) {
-    if(i == 0)
-      io.out(i).bits.prob := Mux(first, 2048.U, probs(i))
-    else 
-      io.out(i).bits.prob := probs(i)
-    io.out(i).bits.bit := nibble_dd(3 - i)
-    io.out(i).bits.last := last_dd
-    io.out(i).valid := valid_dd && ~outSel
-    
-    io.out(i + 4).bits.prob := probs(i)
-    io.out(i + 4).bits.bit := nibble_dd(3 - i)
-    io.out(i + 4).bits.last := last_dd
-    io.out(i + 4).valid := valid_dd && outSel
+    io.out.bits(i).prob := probs(i)
+    io.out.bits(i).bit := nibble_dd(3 - i)
+    io.out.bits(i).last := last_dd
+    io.out.valid := valid_dd
   }
 
   io.status := ramInit.io.status
+}
+
+private class ContextMapCascade(CtxWidth : Int, CascadeNumber : Int, ID : Int) extends Module {
+  val LocalBits = log2Up(CascadeNumber)
+  val LocalCtxWidth = CtxWidth - LocalBits;
+
+  val io = IO(new Bundle{
+    val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
+    val inCascade = Flipped(ValidIO(Vec(4, new BitProbBundle())))
+
+    val out = ValidIO(Vec(4, new BitProbBundle()))
+    val outCascade = ValidIO(new NibbleCtxBundle(CtxWidth))
+
+    val status = new StatusBundle
+  })
+  
+  val idBits = io.in.bits.context(CtxWidth - 1, CtxWidth - LocalBits)
+  val inValid = io.in.valid && idBits === ID.U
+  val last = io.in.valid && io.in.bits.last
+  
+  val cm = Module(new ContextMap(LocalCtxWidth)).io
+  cm.in := io.in
+  cm.in.valid := inValid || last
+
+  if(ID == 0) {
+    io.out := cm.out
+  } else {
+    val inCascade = Pipe(io.inCascade, 3)
+
+    val output = inValid
+    val output_d = RegNext(output, false.B)
+    val output_dd = RegNext(output_d, false.B)
+
+    io.out := Mux(output_dd, cm.out, inCascade)
+  }
+  
+  io.outCascade := Pipe(io.in, 3)
+  io.status := cm.status
+}
+
+class ContextMapLarge(CtxWidth : Int, CascadeNumber : Int) extends Module {
+
+  val io = IO(new Bundle{
+    val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
+    val out = ValidIO(Vec(4, new BitProbBundle()))
+
+    val status = new StatusBundle
+  })
+
+  val cms = (0 until CascadeNumber) map {i => Module(new ContextMapCascade(CtxWidth, CascadeNumber, i)).io}
+
+  cms.head.in := io.in
+  cms.head.inCascade := DontCare
+
+  cms.dropRight(1) zip cms.drop(1) map {case (cm_out, cm_in) =>
+    cm_in.in := cm_out.outCascade
+    cm_in.inCascade := cm_out.out
+  }
+
+  io.out := cms.last.out
+  io.status := StatusMerge(cms map (_.status))
 }
 
 class Order1Context extends Module {
@@ -181,6 +227,38 @@ class Order1Context extends Module {
   io.out.valid := io.in.valid
 }
 
+object ContextMap2Model {
+  def apply(in : Valid[Vec[BitProbBundle]] ) = {
+    require(in.bits.length == 4)
+    val out = Wire(Vec(8, Valid(new BitProbBundle())))
+
+    // used to force set first prob to 2048
+    val first = RegInit(true.B)
+    when(first && out(0).valid) {
+      first := false.B
+    }
+    when(~first && out(4).valid && out(4).bits.last) {
+      first := true.B
+    }
+
+    val outSel = RegInit(false.B)
+    when(in.valid) {
+      outSel := ~outSel
+    }
+    
+    (0 until 4).map(i =>  {
+      out(i).bits := in.bits(i)
+      out(i).valid := in.valid && ~outSel
+      out(i + 4).bits := in.bits(i)
+      out(i + 4).valid := in.valid && outSel
+
+      if(i == 0)
+        out(i).bits.prob := Mux(first, 2048.U, in.bits(i).prob)
+    })
+
+    out
+  }
+}
 
 class Order1 extends Module {
   val io = IO(new Bundle{
@@ -195,7 +273,8 @@ class Order1 extends Module {
 
   contextGen.in := io.in
   contextMap.in := contextGen.out
-  (0 until 8).map(i => io.out(i) := contextMap.out(i))
+
+  io.out := ContextMap2Model(contextMap.out)
 
   io.status := contextMap.status
 }
