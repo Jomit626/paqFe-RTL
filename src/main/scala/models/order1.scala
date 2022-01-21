@@ -98,33 +98,36 @@ class ContextMap(CtxWidth : Int) extends Module {
   val checksumNxt = context_dd(7,0)
   val hit = checksum === checksumNxt
 
-  val line = (0 until 16).map(i => Mux(hit, dout(8*i+7,8*i), 0.U))
+  val lineBytes = (0 until 16).map(i => Mux(hit, dout(8*i+7,8*i), 0.U))
 
-  val state0 = line(1)
-  val state0Nxt = Seq(StateShiftLut(state0, nibble_dd(3)))
+  val state0 = lineBytes(1)
+  val state0Nxt = StateShiftLut(state0, nibble_dd(3))
 
-  val state1group = (2 until 4).map(line(_))
+  val state1group = (2 until 4).map(lineBytes(_))
   val state1OH = UIntToOH(nibble_dd(3))
   val state1 = Mux1H(state1OH, state1group)
-  val state1Nxt = state1group.map(StateShiftLut(_, nibble_dd(2))).zipWithIndex.map{case (s,i) => Mux(state1OH(i), s, state1group(i))}.reverse
+  val state1Nxt = StateShiftLut(state1, nibble_dd(2))
 
-  val state2group = (4 until 8).map(line(_))
+  val state2group = (4 until 8).map(lineBytes(_))
   val state2OH = UIntToOH(nibble_dd(3,2))
   val state2 = Mux1H(state2OH, state2group)
-  val state2Nxt = state2group.map(StateShiftLut(_, nibble_dd(1))).zipWithIndex.map{case (s,i) => Mux(state2OH(i), s, state2group(i))}.reverse
+  val state2Nxt = StateShiftLut(state2, nibble_dd(1))
 
-  val state3group = (8 until 16).map(line(_))
+  val state3group = (8 until 16).map(lineBytes(_))
   val state3OH = UIntToOH(nibble_dd(3,1))
   val state3 = Mux1H(state3OH, state3group)
-  val state3Nxt = state3group.map(StateShiftLut(_, nibble_dd(0))).zipWithIndex.map{case (s,i) => Mux(state3OH(i), s, state3group(i))}.reverse
+  val state3Nxt = StateShiftLut(state3, nibble_dd(0))
 
-  val lineNxt = Cat(state3Nxt ++ state2Nxt ++ state1Nxt ++ state0Nxt ++ Seq(checksumNxt))
+  val dinBytes = Seq(checksumNxt) ++ Seq(state0Nxt) ++ Seq.fill(2){state1Nxt} ++ Seq.fill(4){state2Nxt} ++ Seq.fill(8){state3Nxt}
   val wen = Cat(Seq(state3OH,state2OH,state1OH,1.U(1.W),1.U(1.W)))
+
+  // val lineNxt = (din zip line).zipWithIndex.map({case ((a, b), i) => Mux(wen(i), a, b)})
+  val lineNxt = (0 until 16).map(i => Mux(wen(i), dinBytes(i), lineBytes(i)))
 
   ram.io.ena := valid_dd | ramInit.io.wen
   ram.io.wea := wen | Cat(Seq.fill(wen.getWidth){ramInit.io.wen})
   ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
-  ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt, 0.U)
+  ram.io.dina := Mux(ramInit.io.status.initDone, Cat(dinBytes.reverse), 0.U)
   
   val outSel = RegInit(false.B)
   when(valid_dd) {
@@ -132,7 +135,7 @@ class ContextMap(CtxWidth : Int) extends Module {
   }
 
   when(harzared1) {
-    dout := lineNxt
+    dout := Cat(lineNxt.reverse)
   }.elsewhen(harzared2_d) {
     dout := ram.io.doa
   }.otherwise{
