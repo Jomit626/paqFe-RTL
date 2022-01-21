@@ -139,3 +139,8 @@ import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
   (new ChiselStage).emitVerilog(new Compressor)
 }
+
+import  models.ContextMap
+object GetTestVerilog extends App {
+  (new ChiselStage).emitVerilog(new ContextMap(15))
+}
