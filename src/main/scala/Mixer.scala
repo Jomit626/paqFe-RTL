@@ -61,13 +61,8 @@ class DPRam[T <: Data](t : T, addr : Width) extends Module {
   }
 }
 
-class PredictUpdateEngineCtrBundle extends Bundle {
-  val bit = UInt(1.W)
-  // val wHarzard = Bool()
-} 
-
 class MACC(AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
-  val latency = 3
+  val latency = 4
 
   val io = IO(new Bundle {
     val ce = Input(Bool())
@@ -89,11 +84,11 @@ class MACC(AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
 
   lastResult := Mux(reload, 0.S, acc)
 
-  io.acc := acc
+  io.acc := RegEnable(acc, io.ce)
 }
 
 // c - a * b
-class MS (AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
+class MS(AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
   val latency = 3
   val io = IO(new Bundle {
     val ce = Input(Bool())
@@ -110,7 +105,7 @@ class MS (AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
   val c = ShiftRegister(io.c, 2, io.ce)
 
   val mul = RegEnable(a * b, io.ce)
-  val out = RegEnable(c + (mul >> 16), io.ce)
+  val out = RegEnable((c << 16) + mul, io.ce) >> 16
 
   io.out := out
 }
@@ -119,7 +114,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {
     val W = Flipped(DecoupledIO(WeightsBundle(p.nFeatures)))
     val X = Flipped(DecoupledIO(XsBundle(p.nFeatures)))
-    val ctrl = Flipped(DecoupledIO(new PredictUpdateEngineCtrBundle()))
+    val ctrl = Flipped(DecoupledIO(UInt(1.W)))
 
     val P = ValidIO(new BitProbBundle())
 
@@ -144,7 +139,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   // X * W
   val X = RegEnable(io.X.bits, xLoad)
   val W = RegEnable(io.W.bits, wLoad)
-  val bit0 = RegEnable(io.ctrl.bits.bit, bitLoad)
+  val bit0 = RegEnable(io.ctrl.bits, bitLoad)
 
   val x = X(wxSel)
   val w = W(wxSel)
@@ -155,7 +150,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   macc.io.ce := maccCE
   macc.io.reload := maccReload
 
-  val bit = ShiftRegister(bit0, 3, maccCE)
+  val bit = ShiftRegister(bit0, macc.latency, maccCE)
   val prob = Squash(macc.io.acc >> 16)
 
   // Ctrl singls gen
@@ -194,7 +189,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   maccReload := cnt === 0.U
   maccCE := true.B
 
-  pOut := ShiftRegister(cntWrp, 3)
+  pOut := ShiftRegister(cntWrp, macc.latency)
 
   // outputs
   io.X.ready := inIdle || (inWorking && cntWrp)
@@ -232,18 +227,20 @@ class LossCalPE()(implicit p : MixerParameter) extends Module {
   })
   // ctrl signals
   val lossLoad = Wire(Bool())
-
+  val probLoad = Wire(Bool())
+  
   // data path
-  val prob = io.P.bits.prob
-  val bit = io.P.bits.bit
+  val prob = RegEnable(io.P.bits.prob, probLoad)
+  val bit = RegEnable(io.P.bits.bit, probLoad)
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
   val lr = 10.U(6.W)
   val lossCal = (probExpect - prob).asSInt * lr  // zero ext first?
-  val loss = RegEnable(lossCal, lossLoad)
+  val loss = lossCal
 
   // ctrl signals gne
   lossLoad := io.P.valid
+  probLoad := io.P.valid
 
   // output
   io.loss := loss
@@ -278,112 +275,32 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
   io.wStrm.valid := ShiftRegister(io.updateStrm.valid, ms.latency, false.B, true.B)
 }
 
-class PredictUpdateEngine(n : Int)(implicit p : MixerParameter) extends Module {
+class PredictUpdateEngine()(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {
-    val W = Input(DecoupledIO(WeightsBundle(p.nFeatures)))
-    val X = Input(DecoupledIO(XsBundle(p.nFeatures)))
-    val ctrl = Input(DecoupledIO(new PredictUpdateEngineCtrBundle()))
+    val W = Flipped(DecoupledIO(WeightsBundle(p.nFeatures)))
+    val X = Flipped(DecoupledIO(XsBundle(p.nFeatures)))
+    val ctrl = Flipped(DecoupledIO(UInt(1.W)))
 
-    val P = Output(ValidIO(new BitProbBundle()))
-    val Wu = Output(ValidIO(SInt(p.WeightWidth)))
+    val P = ValidIO(new BitProbBundle())
+    val Wu = ValidIO(SInt(p.WeightWidth))
   })
 
-  // ctrl signals
-  val xLoad = Wire(Bool())
-  val wLoad = Wire(Bool())
-  val bitLoad = Wire(Bool())
-  val wxSel = Wire(UInt(log2Ceil(n + 1).W))
+  val predictPE = Module(new PredictPE)
+  val lossPE = Module(new LossCalPE)
+  val updatePE = Module(new UpdatePE)
 
-  val maccReload = Wire(Bool())
-  val maccCE = Wire(Bool())
+  predictPE.io.W <> io.W
+  predictPE.io.X <> io.X
+  predictPE.io.ctrl <> io.ctrl
+  
+  lossPE.io.P <> predictPE.io.P
+  io.P <> predictPE.io.P
+  lossPE.io.updateStrmCAS <> predictPE.io.updateStrm
 
-  val pOut = Wire(Bool())
-  val lossLoad = Wire(Bool())
+  updatePE.io.loss := lossPE.io.loss
+  updatePE.io.updateStrm <> lossPE.io.updateStrm
 
-  val msCE = Wire(Bool())
-  val wuOut = Wire(Bool())
-
-  // data path
-  // X * W
-  val X = RegEnable(io.X.bits, xLoad)
-  val W = RegEnable(io.W.bits, wLoad)
-  val bit0 = RegEnable(io.ctrl.bits.bit, bitLoad)
-
-  val x = X(wxSel)
-  val w = W(wxSel)
-
-  val macc = Module(new MACC(p.XWidth, p.WeightWidth, 32.W))
-  macc.io.a := x
-  macc.io.b := w
-  macc.io.ce := maccCE
-  macc.io.reload := maccReload
-
-  // cal loss
-  val bit = ShiftRegister(bit0, 3, maccCE)
-  val prob = Squash(macc.io.acc >> 16)
-  val probExpect = Cat(bit, 0.U(11.W))
-
-  val lr = 55.U(6.W)
-  val lossCal = (probExpect - prob).asSInt * lr  // zero ext first?
-  val loss = RegEnable(lossCal, lossLoad)
-
-  // W + X * loss
-  val x2 = ShiftRegister(x, p.nFeatures + macc.latency, maccCE)
-  val w2 = ShiftRegister(w, p.nFeatures + macc.latency, maccCE)
-
-  val ms = Module(new MS(p.XWidth, 12.W, p.WeightWidth))
-  ms.io.ce := msCE
-  ms.io.a := x2
-  ms.io.b := loss
-  ms.io.c := w2
-
-  // Ctrl singls generation
-  //val s0 :: s1 :: s2 :: s3
-  val cntCE = Wire(Bool())
-  val (cnt, cntWrp) = Counter(0 until p.nFeatures, cntCE)
-
-  val sIdle :: sWorking :: Nil = Enum(2)
-  val stateNxt = Wire(UInt())
-  val state = RegNext(stateNxt)
-
-  val takeInput = io.X.fire && io.W.fire && io.ctrl.fire
-  switch(state) {
-    is(sIdle) {
-      when(takeInput) {
-        stateNxt := sWorking
-      }
-    }
-
-    is(sWorking) {
-      when(cntWrp && ~takeInput) {
-        stateNxt := sIdle
-      }
-    }
-  }
-
-  val inIdle = state === sIdle
-  val inWorking = state === sWorking
-  cntCE := inWorking
-
-  xLoad := inIdle || (inWorking && cntWrp)
-  wLoad := inIdle || (inWorking && cntWrp)
-  bitLoad := inIdle || (inWorking && cntWrp)
-  wxSel := cnt
-
-  maccReload := cnt === 0.U
-  maccCE := inWorking
-
-  pOut := ShiftRegister(cntWrp, 3)
-  lossLoad := pOut
-
-  // outputs
-  io.P.bits.bit := bit
-  io.P.bits.prob := prob
-  io.P.bits.last := DontCare
-  io.P.valid := pOut
-
-  io.Wu.bits := ms.io.out
-  io.Wu.valid := wuOut
+  io.Wu <> updatePE.io.wStrm
 }
 
 class MixerPE(n : Int, ForceFirstOutput : Boolean) extends Module {

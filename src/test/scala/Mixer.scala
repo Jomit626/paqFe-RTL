@@ -181,10 +181,9 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
     }.fork {
       // feed bit
       val idx = nFeatures * 2
-      val db = new PredictUpdateEngineCtrBundle()
       for(line <- data) {
         val data = line(idx)
-        c.io.ctrl.enqueue(db.Lit(_.bit -> data.U))
+        c.io.ctrl.enqueue(data.U)
       }
     }.fork {
       // expect P
