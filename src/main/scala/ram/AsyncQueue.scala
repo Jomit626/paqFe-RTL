@@ -17,8 +17,9 @@ object Synchronizer {
   def apply[T <: Data](t : T) : T = {
     val tD = RegNext(t, 0.U)
     val tDD = RegNext(tD, 0.U)
+    val tDDD = RegNext(tDD, 0.U)
 
-    tDD.asTypeOf(t)
+    tDDD.asTypeOf(t)
   }
 }
 
@@ -42,9 +43,9 @@ class AsyncQueueSource[T <: Data](gen : T, AddrWidth : Int) extends Module {
   val (waddr, wgray) = GrayCounter(AddrWidth + 1, wen)
   val rgray = Synchronizer(io.rgray)
 
-  val wfull = wgray =/= Cat(~rgray(AddrWidth, AddrWidth-1), rgray(AddrWidth-2,0))
+  val wfull = wgray === Cat(~rgray(AddrWidth, AddrWidth-1), rgray(AddrWidth-2,0))
 
-  io.enq.ready := RegNext(wfull, false.B)
+  io.enq.ready := RegNext(~wfull, false.B)
 
   io.wen := wen
   io.waddr := waddr
