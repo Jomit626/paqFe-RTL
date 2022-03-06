@@ -1,13 +1,25 @@
-package testhelpers
+package paqFe
 
 import chisel3._
 import chiseltest._
 
-import types._
+import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
-object Helpers {
-  def statusWaitInitDone(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12)) = {
+import paqFe.types._
+
+class SpecClass
+  extends AnyFlatSpec
+  with ChiselScalatestTester
+  with Matchers {
+  
+}
+
+object statusWaitInitDone {
+  def apply(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12)) = {
     clock.setTimeout(1000 + timeout)
+
     var done = false
     while(!done) {
       clock.step()

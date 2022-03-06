@@ -1,4 +1,4 @@
-package types
+package paqFe.types
 
 import chisel3._
 import chisel3.util._
@@ -34,6 +34,13 @@ class BitProbBundle extends Bundle {
   val bit = Output(UInt(1.W))
   val prob = Output(UInt(12.W))
   val last = Output(Bool())
+}
+
+class BitProbsCtxBundle(n : Int) extends Bundle {
+  val bit = UInt(1.W)
+  val ctx = UInt(8.W)
+  val probs = Vec(n, UInt(12.W))
+  val last = Bool()
 }
 
 class StatusBundle extends Bundle {

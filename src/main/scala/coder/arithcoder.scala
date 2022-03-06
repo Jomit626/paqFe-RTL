@@ -1,9 +1,9 @@
-package coder
+package paqFe.coder
 
 import chisel3._
 import chisel3.util._
 
-import types._
+import paqFe.types._
 
 
 class ArithCoder extends Module {

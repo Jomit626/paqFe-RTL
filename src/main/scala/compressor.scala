@@ -1,10 +1,14 @@
+package paqFe
+
 import chisel3._
 import chisel3.util._
 
-import types._
-import ram._
-import coder.ArithCoder
-import models.{Order1, Byte2Nibble}
+import paqFe.types._
+import paqFe.ram._
+import paqFe.coder.ArithCoder
+import paqFe.models.{Order1, Byte2Nibble}
+import paqFe.models.ContextMapLarge
+import paqFe.mixer._
 
 class CoderAribiter extends Module {
   val io = IO(new Bundle {
@@ -88,6 +92,40 @@ class CompressrorNoCDC extends Module {
   io.status := order1.io.status
 }
 
+class VerilogAXISBundle(val addrWidth: Int) extends Bundle {
+  val TVALID = Output(Bool())
+  val TREADY = Input(Bool())
+
+  val TLAST = Output(Bool())
+  val TDATA = Output(UInt(addrWidth.W))
+}
+
+class CompressorVerilogWrapper extends RawModule {
+  val S_AXIS = IO(Flipped(new VerilogAXISBundle(8)))
+  val S_AXIS_CLK = IO(Input(Clock()))
+  val S_AXIS_ARESTN = IO(Input(Bool()))
+
+  val M_AXIS = IO(new VerilogAXISBundle(16))
+  val M_AXIS_CLK = IO(Input(Clock()))
+  val M_AXIS_ARESTN = IO(Input(Bool()))
+
+  val inst = Module(new Compressor())
+
+  inst.model_clk := S_AXIS_CLK
+  inst.model_rst := ~S_AXIS_ARESTN
+  inst.model_in.valid := S_AXIS.TVALID && inst.model_status.initDone
+  S_AXIS.TREADY := inst.model_in.ready  && inst.model_status.initDone
+  inst.model_in.bits.byte := S_AXIS.TDATA
+  inst.model_in.bits.last := S_AXIS.TLAST 
+
+  inst.coder_clk := M_AXIS_CLK
+  inst.coder_rst := ~M_AXIS_ARESTN
+  M_AXIS.TVALID := inst.coder_out.valid
+  inst.coder_out.ready := M_AXIS.TREADY
+  M_AXIS.TDATA := Cat(inst.coder_out.bits.byte, inst.coder_out.bits.idx)
+  M_AXIS.TLAST := inst.coder_out.bits.last
+}
+
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
   val model_rst = IO(Input(Bool()))
@@ -142,5 +180,6 @@ object GetCompressorVerilog extends App {
 
 import  models.ContextMap
 object GetTestVerilog extends App {
-  (new ChiselStage).emitVerilog(new ContextMap(15))
+  implicit val p = new MixerParameter(6)
+  (new ChiselStage).emitVerilog(new CompressorVerilogWrapper())
 }

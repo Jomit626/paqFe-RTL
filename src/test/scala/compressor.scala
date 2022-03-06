@@ -1,3 +1,5 @@
+package paqFe
+
 import org.scalatest._
 
 import chisel3._
@@ -13,7 +15,6 @@ import verifydata._
 import types._
 
 import LocalHelpers._
-import testhelpers.Helpers._
 
 class CoderAribiterSpec extends AnyFlatSpec
   with ChiselScalatestTester {

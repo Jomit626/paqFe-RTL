@@ -1,4 +1,4 @@
-package verifydata
+package paqFe.verifydata
 
 import java.io._
 import scala.io.Source

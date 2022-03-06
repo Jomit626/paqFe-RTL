@@ -1,13 +1,13 @@
-package models
+package paqFe.models
 
 import chisel3._
 import chisel3.util._
 
-import ram._
-import state.StateShiftLut
-import state.StaticStateMap
+import paqFe.ram._
+import paqFe.state.StateShiftLut
+import paqFe.state.StaticStateMap
 
-import types._
+import paqFe.types._
 
 class Byte2Nibble(n : Int) extends Module {
   val io = IO(new Bundle {
@@ -229,6 +229,30 @@ class Order1Context extends Module {
   io.out.bits.last := io.in.bits.last
   io.out.valid := io.in.valid
 }
+
+/*
+class OrdersContext extends Module {
+  val io = IO(new Bundle{
+    val in = Flipped(ValidIO(new NibbleBundle()))
+    val out = ValidIO(Vec(4,new NibbleCtxBundle(12)))
+  })
+
+  val C = RegInit()
+
+  val ctxNxt = Wire(UInt())
+  val ctx = RegEnable(ctxNxt, 0.U, io.in.valid)
+
+  val last = io.in.bits.last
+  val last_d = RegNext(last, false.B)
+
+  ctxNxt := Mux(last && last_d, 0.U, Cat(ctx(7, 0), io.in.bits.nibble))
+
+  io.out.bits.context := ctx
+  io.out.bits.nibble := io.in.bits.nibble
+  io.out.bits.last := io.in.bits.last
+  io.out.valid := io.in.valid
+}
+*/
 
 object ContextMap2Model {
   def apply(in : Valid[Vec[BitProbBundle]] ) = {

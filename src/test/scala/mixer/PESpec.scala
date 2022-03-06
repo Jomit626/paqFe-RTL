@@ -1,3 +1,5 @@
+package paqFe.mixer
+
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.BundleLiterals._
@@ -8,26 +10,18 @@ import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import verifydata._
-import types._
+import paqFe.verifydata._
+import paqFe.types._
 
 import java.io._
 import com.github.tototoshi.csv._
 import chisel3.experimental.VecLiterals._
 
-import LocalHelpers._
-import testhelpers.Helpers._
+import paqFe._
 
 import Helpers._
 
-class MixerSubModuleSpec
-  extends AnyFlatSpec
-  with ChiselScalatestTester
-  with Matchers {
-  
-  assert(TreeReduce[Int](Seq(1,2,3,4), _ + _) == 10)
-  assert(TreeReduce[Int](Seq(1,2,3,4,5), _ + _) == 15)
-
+class PredictPESpec extends SpecClass{
   behavior of "Mixer Prediction Function"
   val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer-predict")
   for(line <- mixerPredictDB.data) {
@@ -51,8 +45,10 @@ class MixerSubModuleSpec
     }
 
   }
+}
 
-  behavior of "Loss Calcuation"
+class LossCalPESpec extends SpecClass {
+  behavior of "Loss Calcuation PE"
   val mixerLossDB = new VerifyData("./paqFe/verify/db/mixer-loss")
   for(line <- mixerLossDB.data) {
     val data_name = line(0)
@@ -68,8 +64,10 @@ class MixerSubModuleSpec
       }
     }
   }
+}
 
-  behavior of "Weight Update"
+class UpdatePESpec extends SpecClass {
+  behavior of "Weight Update PE"
   val mixerUpdateDB = new VerifyData("./paqFe/verify/db/mixer-update")
   for(line <- mixerUpdateDB.data) {
     val data_name = line(0)
@@ -90,27 +88,8 @@ class MixerSubModuleSpec
       }
     }
   }
-  /*
-  behavior of "Mixer"
-
-  val db = new VerifyData("./paqFe/verify/db/mixer")
-  for(line <- db.data) {
-    val data_name = line(0)
-    val input_file = line(1)
-    val output_file = line(2)
-    it should s"match software model with data: $data_name" in {
-      test(new Mixer(5))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
-      
-        MixerDUT.init(c)
-        statusWaitInitDone(c.clock, c.io.status)
-
-        MixerDUT.test(c, output_file)
-      }
-    }
-  }
-  */
 }
+
 object Helpers {
 
 implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
@@ -141,11 +120,8 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
     c.io.W.initSource()
     c.io.W.setSourceClock(c.clock)
 
-    c.io.X.initSource()
-    c.io.X.setSourceClock(c.clock)
-
-    c.io.ctrl.initSource()
-    c.io.ctrl.setSourceClock(c.clock)
+    c.io.in.initSource()
+    c.io.in.setSourceClock(c.clock)
 
     c.io.P.initSink()
     c.io.P.setSinkClock(c.clock)
@@ -160,14 +136,20 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
     val nFeatures = p.nFeatures
 
     fork {
-      // feed X
+      // feed Xs and bit
       // X(n), W(n), bit, prob
       val sfrom = 0
       val suntil = sfrom + nFeatures
+      val bitIdx = nFeatures * 2
+      val bd = new PredictUpdateEngineXCtrlBundle()
       for(line <- data) {
-        val data = line.slice(sfrom, suntil)
-        assert(data.length == nFeatures)
-        c.io.X.enqueue(Vec.Lit(data.map(_.S(p.XWidth)):_*))
+        val Xs = line.slice(sfrom, suntil)
+        val bit = line(bitIdx)
+        c.io.in.enqueue(bd.Lit(
+          _.X -> Vec.Lit(Xs.map(_.S(p.XWidth)):_*),
+          _.bit -> bit.U,
+          _.harzardFastPath -> false.B
+        ))
       }
     }.fork {
       // feed W
@@ -177,13 +159,6 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
       for(line <- data) {
         val data = line.slice(sfrom, suntil)
         c.io.W.enqueue(Vec.Lit(data.map(_.S(p.WeightWidth)):_*))
-      }
-    }.fork {
-      // feed bit
-      val idx = nFeatures * 2
-      for(line <- data) {
-        val data = line(idx)
-        c.io.ctrl.enqueue(data.U)
       }
     }.fork {
       // expect P
@@ -267,68 +242,6 @@ implicit class UpdatePEDUT(c : UpdatePE)(implicit p : MixerParameter) {
         }
       }
     }.join()
-  }
-}
-
-private object MixerDUT {
-  def init(c : Mixer) = {
-    for(i <- 0 until 8) {
-      c.io.in(i).initSource()
-      c.io.in(i).setSourceClock(c.clock)
-      c.io.out(i).initSink()
-      c.io.out(i).setSinkClock(c.clock)
-      c.io.in(i).valid.poke(false.B)
-    }
-
-    c.reset.poke(true.B)
-    c.clock.step(16)
-    c.reset.poke(false.B)
-    c.clock.step()
-  }
-
-  def test(c : Mixer, db_file : String) = {
-    val reader = CSVReader.open(new File(db_file))
-
-    val data = reader.all().map{ _.map(_.toInt)}.toIndexedSeq
-    assert(data.length % 8 == 0)
-
-    var thr = fork {}
-    for(i <- 0 until 8) {
-      thr = thr.fork {
-        val exp = new BitProbBundle()
-        for(idx <- 0 until (data.length / 8)) {
-          val t = data(idx * 8 + i).takeRight(2)
-          val bit = t(0)
-          val prob = t(1)
-
-          c.io.out(i).expectDequeue(exp.Lit(
-            _.bit -> bit.U,
-            _.prob -> prob.U,
-            _.last -> (idx == (data.length / 8 - 1)).B
-          ))
-        }
-      }
-
-      thr = thr.fork {
-        val in = new BitProbsCtxBundle(c.nProb)
-        for(idx <- 0 until (data.length / 8)) {
-          assert(data(idx * 8 + i)(0) == i)
-          val t = data(idx * 8 + i).drop(1)
-          val probs = t.take(c.nProb)
-          val ctx = t(c.nProb)
-          val bit = t(c.nProb + 1)
-
-          c.io.in(i).enqueue(in.Lit(
-            _.probs -> Vec.Lit(probs.map(_.U(12.W)):_*),
-            _.ctx -> ctx.U,
-            _.bit -> bit.U,
-            _.last -> (idx == (data.length / 8 - 1)).B
-          ))
-        }
-      }
-    }
-    
-    thr.join()
   }
 }
 

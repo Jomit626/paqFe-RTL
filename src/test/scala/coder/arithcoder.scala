@@ -1,4 +1,5 @@
-package coder
+package paqFe.coder
+import paqFe._
 
 import chisel3._
 import chisel3.util._
@@ -9,14 +10,13 @@ import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import verifydata._
-import types._
+import paqFe.verifydata._
+import paqFe.types._
 
 import java.io._
 import com.github.tototoshi.csv._
 
 import LocalHelpers._
-import testhelpers.Helpers._
 
 class ArithCoderBehavior {
   var low : Long = 0
