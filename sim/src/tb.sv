@@ -135,6 +135,72 @@ module stream2manyfile (
   end
 endmodule
 
+module counter(
+  input wire clk,
+  input wire rst_n,
+  input wire ce,
+  output reg [31:0] d
+);
+
+  always @(posedge clk) begin
+    if(~rst_n) 
+      d <= 'd0;
+    else if(ce)
+      d <= d + 'd1;
+  end
+
+endmodule
+
+module StreamMonitor(
+  input wire clk,
+  input wire rst_n,
+
+  input wire valid,
+  input wire ready,
+  input wire last,
+
+  output reg [31:0] transfer_time_counter,
+  output reg [31:0] transfer_counter
+);
+  reg stateNxt;
+  reg state;
+  
+  always @(posedge clk) begin
+    if(~rst_n)
+      state <= 'd0;
+    else 
+      state <= stateNxt;
+  end
+
+  always @(*) begin
+    if(state == 'd0) begin
+      if(valid & ready)
+        stateNxt = 'd1;
+      else
+        stateNxt = 'd0;
+    end else begin
+      if(valid & ready && last)
+        stateNxt = 'd0;
+      else
+        stateNxt = 'd1;
+    end
+  end
+
+  always @(posedge clk) begin
+    if(~rst_n)
+      transfer_counter <= 'd0;
+    else if (valid & ready)
+      transfer_counter <= transfer_counter + 'd1;
+  end
+
+  always @(posedge clk) begin
+    if(~rst_n)
+      transfer_time_counter <= 'd0;
+    else
+      transfer_time_counter <= transfer_time_counter + 'd1;
+  end
+endmodule
+
 module tb();
   wire clk_160MHz;
   wire clk_160MHz_rst_n;
@@ -200,8 +266,42 @@ module tb();
     .data(coder_out_bits_byte)
   );
 
+  wire [31:0] input_time_cnt;
+  wire [31:0] input_cnt;
+  StreamMonitor imon (
+    .clk(model_clk),
+    .rst_n(~model_rst),
+
+    .valid(model_in_valid),
+    .ready(model_in_ready && model_status_initDone),
+    .last(model_in_bits_last),
+
+    .transfer_time_counter(input_time_cnt),
+    .transfer_counter(input_cnt)
+  );
+
+  wire [31:0] output_time_cnt;
+  wire [31:0] output_cnt;
+  StreamMonitor omon (
+    .clk(coder_clk),
+    .rst_n(~coder_rst),
+
+    .valid(coder_out_valid),
+    .ready(coder_out_ready),
+    .last(coder_out_bits_last),
+
+    .transfer_time_counter(output_time_cnt),
+    .transfer_counter(output_cnt)
+  );
+
   always @(posedge clk_160MHz) begin
     if(coder_out_ready && coder_out_valid && coder_out_bits_last) begin
+      $display(
+        "Input Stream Monitor\nClock Cnt: %d\nHandshake Cnt: %d\nTime : %dns\nTP:%d ns/Byte, %d MB/s"
+        , input_time_cnt, input_cnt, input_time_cnt*6.25,(input_time_cnt*6.25)/input_cnt,input_cnt/(input_time_cnt*6.25) * 953.67);
+      $display(
+        "Output Stream Monitor\nClock Cnt: %d\nHandshake Cnt: %d\n"
+        , output_time_cnt, output_cnt);
       #1000 $finish();
     end
   end

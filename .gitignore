@@ -348,6 +348,11 @@ hs_err_pid*
 **/metals.sbt
 .bloop
 
-# viavdo logs
+# vivado logs
 *.jou
 *.log
+
+# vivado sim files
+sim/xsim.dir
+sim/axsim.sh
+*.pb
