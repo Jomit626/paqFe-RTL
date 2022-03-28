@@ -20,3 +20,12 @@ object WeightsBundle {
     Vec(p.nFeatures, SInt(p.WeightWidth))
   }
 }
+
+class WeightUpdateBundle()(implicit p : MixerParameter) extends Bundle {
+  val w = Vec(p.VecDotMACNum, SInt(p.WeightWidth))
+  val x = Vec(p.VecDotMACNum, SInt(p.XWidth))
+}
+
+class WeightsWriteBackBundle()(implicit p : MixerParameter) extends Bundle {
+  val w = Vec(p.VecDotMACNum, SInt(p.WeightWidth))
+}

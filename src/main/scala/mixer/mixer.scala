@@ -17,16 +17,16 @@ class PredictUpdateEngine()(implicit p : MixerParameter) extends Module {
   val predictPE = Module(new PredictPE)
   val lossPE = Module(new LossCalPE)
   val updatePE = Module(new UpdatePE)
-
+  
+  
   predictPE.io.W <> io.W
   predictPE.io.in <> io.in
   
   lossPE.io.P <> predictPE.io.P
   io.P <> predictPE.io.P
-  lossPE.io.updateStrmCAS <> predictPE.io.updateStrm
 
   updatePE.io.loss := lossPE.io.loss
-  updatePE.io.updateStrm <> lossPE.io.updateStrm
+  updatePE.io.updateStrm <> Queue(predictPE.io.updateStrm, p.VecDotII + predictPE.latency + lossPE.latency + 1)
 
   io.Wu <> updatePE.io.wStrm
 }

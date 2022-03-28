@@ -23,18 +23,14 @@ import Helpers._
 
 class PredictPESpec extends SpecClass{
   behavior of "Mixer Prediction Function"
-  val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer-predict")
+  val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-predict")
+
   for(line <- mixerPredictDB.data) {
     val data_name = line(0)
     val input_file = line(1)
     val output_file = line(2)
     
-    val testVectorLen = CSVReader.open(new File(output_file)).readNext().get.size
-    // X(n), W(n), bit, prob
-    assert((testVectorLen - 2) % 2 == 0)
-    val nFeatures = (testVectorLen - 2) / 2
-
-    implicit val p = new MixerParameter(nFeatures)
+    implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new PredictPE())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -49,13 +45,13 @@ class PredictPESpec extends SpecClass{
 
 class LossCalPESpec extends SpecClass {
   behavior of "Loss Calcuation PE"
-  val mixerLossDB = new VerifyData("./paqFe/verify/db/mixer-loss")
+  val mixerLossDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-loss")
   for(line <- mixerLossDB.data) {
     val data_name = line(0)
     val input_file = line(1)
     val output_file = line(2)
     
-    implicit val p = new MixerParameter()
+    implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new LossCalPE())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -68,18 +64,13 @@ class LossCalPESpec extends SpecClass {
 
 class UpdatePESpec extends SpecClass {
   behavior of "Weight Update PE"
-  val mixerUpdateDB = new VerifyData("./paqFe/verify/db/mixer-update")
+  val mixerUpdateDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-update")
   for(line <- mixerUpdateDB.data) {
     val data_name = line(0)
     val input_file = line(1)
     val output_file = line(2)
 
-    val testVectorLen = CSVReader.open(new File(output_file)).readNext().get.size
-    // X(n), W(n),  Wu(n), loss
-    assert((testVectorLen - 1) % 3 == 0)
-    val nFeatures = (testVectorLen - 1) / 3
-
-    implicit val p = new MixerParameter(nFeatures)
+    implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new UpdatePE())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -96,6 +87,9 @@ implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
   def init() = {
     c.io.P.initSource()
     c.io.P.setSourceClock(c.clock)
+
+    c.io.loss.initSink()
+    c.io.loss.setSinkClock(c.clock)
   }
 
   def test( dbFile : String) = {
@@ -110,7 +104,7 @@ implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
 
       c.io.P.enqueueNow(bd.Lit(_.bit -> bit.U, _.prob -> prob.U, _.last -> false.B))
       c.clock.step()
-      c.io.loss.expect(loss.S(p.lossWidth))
+      c.io.loss.expectDequeueNow(loss.S(p.lossWidth))
     }
   }
 }
@@ -130,11 +124,8 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
     c.io.updateStrm.setSinkClock(c.clock)
   }
 
-  def test(dbFile : String) = {
-    val reader = CSVReader.open(new File(dbFile))
-    val data = reader.all().map{ _.map(_.toInt)}.toIndexedSeq
+  def test_inst(data: IndexedSeq[Seq[Int]]) = {
     val nFeatures = p.nFeatures
-
     fork {
       // feed Xs and bit
       // X(n), W(n), bit, prob
@@ -171,32 +162,52 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
         c.io.P.expectDequeue(db.Lit(_.bit -> bit.U, _.prob -> prob.U, _.last -> false.B))
       }
     }.fork {
-      // expect stream, focus on timming
+      // expect update stream
+      c.io.updateStrm.ready.poke(true.B)
       for(line <- data) {
         val X = line.slice(0, nFeatures)
         val W = line.slice(nFeatures, nFeatures * 2)
 
-        var valid = c.io.updateStrm.valid.peek().litToBoolean
-        while(!valid) {
-          c.clock.step()
-          valid = c.io.updateStrm.valid.peek().litToBoolean
-        }
-
-        for(i <- 0 until nFeatures) {
-          c.io.updateStrm.valid.expect(true.B)
-          c.io.updateStrm.bits.w.expect(W(i).S(p.WeightWidth))
-          c.io.updateStrm.bits.x.expect(X(i).S(p.XWidth))
+        for(j <- 0 until p.VecDotII) {
+          var valid = c.io.updateStrm.valid.peek().litToBoolean
+          while(!valid) {
+            c.clock.step()
+            valid = c.io.updateStrm.valid.peek().litToBoolean
+          }
+          
+          for(i <- 0 until p.VecDotMACNum) {
+            if(j * p.VecDotMACNum + i < nFeatures) {
+              c.io.updateStrm.bits.w(i).expect(W(j * p.VecDotMACNum + i).S)
+              c.io.updateStrm.bits.x(i).expect(X(j * p.VecDotMACNum + i).S)
+            }
+          }
           c.clock.step()
         }
       }
     }.join()
+  }
 
+  def test(dbFile : String) = {
+    val reader = CSVReader.open(new File(dbFile))
+    
+    val it = reader.iterator
+    var end = false
+    while(!end) { // TODO: make a util
+      val data = it.take(100000).map{ _.map(_.toInt)}.toIndexedSeq
+      if(!data.isEmpty) {
+        test_inst(data)
+      }
+      end = data.isEmpty
+    }
   }
 }
 
 implicit class UpdatePEDUT(c : UpdatePE)(implicit p : MixerParameter) {
 
   def init() = {
+    c.io.loss.initSource()
+    c.io.loss.setSourceClock(c.clock)
+
     c.io.updateStrm.initSource()
     c.io.updateStrm.setSourceClock(c.clock)
 
@@ -222,24 +233,17 @@ implicit class UpdatePEDUT(c : UpdatePE)(implicit p : MixerParameter) {
         val W = line.slice(wfrom, wuntil)
         val loss = line(lossIdx)
 
-        c.io.loss.poke(loss.S(p.lossWidth))
-        for(i <- 0 until n) {
-          c.io.updateStrm.valid.poke(true.B)
-          c.io.updateStrm.bits.w.poke(W(i).S(p.WeightWidth))
-          c.io.updateStrm.bits.x.poke(X(i).S(p.XWidth))
-          c.clock.step()
-        }
-        c.io.updateStrm.valid.poke(false.B)
+        c.io.loss.enqueueNow(loss.S(p.lossWidth))
+
       }
     }.fork {
       // expect Wu
       val sfrom = n * 2
       val suntil = sfrom + n
+      val bd = new WeightsWriteBackBundle()
       for(line <- data) {
         val data = line.slice(sfrom, suntil)
-        for(w <- data) {
-          c.io.wStrm.expectDequeue(w.S(p.WeightWidth))
-        }
+
       }
     }.join()
   }

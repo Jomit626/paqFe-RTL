@@ -25,7 +25,7 @@ class DPRam[T <: Data](t : T, addr : Width) extends Module {
 }
 
 class MACC(AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
-  val latency = 4
+  val latency = 3
 
   val io = IO(new Bundle {
     val ce = Input(Bool())
@@ -47,7 +47,7 @@ class MACC(AWidth : Width, BWidth : Width, CWidth : Width) extends Module {
 
   lastResult := Mux(reload, 0.S, acc)
 
-  io.acc := RegEnable(acc, io.ce)
+  io.acc := acc
 }
 
 // c - a * b
