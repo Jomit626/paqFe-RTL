@@ -164,7 +164,7 @@ class LossCalPE()(implicit p : MixerParameter) extends Module {
   val bit = RegEnable(io.P.bits.bit, probLoad)
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
-  val lr = 10.U(6.W)
+  val lr = 7.U(6.W) // TODO: Learning rate
   val lossCal = (probExpect - prob).asSInt * lr
   val loss = lossCal
 
@@ -215,7 +215,7 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
   cntCE := inWorking
 
   // data path
-  val loss = RegNext(io.loss.bits, io.loss.valid)
+  val loss = RegEnable(io.loss.bits, io.loss.valid)
 
   val mss = Seq.fill(p.VecScaleSubMSNum) {Module(new MS(p.XWidth, p.lossWidth, p.WeightWidth))}
   mss.zipWithIndex.foreach{case (m, i) =>
@@ -229,7 +229,7 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
 
   // io
   io.updateStrm.ready := inWorking
-  io.wStrm.valid := ShiftRegister(io.updateStrm.valid, mss.last.latency, false.B, en = true.B)
+  io.wStrm.valid := ShiftRegister(inWorking, mss.last.latency, false.B, en = true.B)
 
   when(inWorking) {
     assert(io.updateStrm.valid, "FIFO empty!")

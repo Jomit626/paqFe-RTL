@@ -92,19 +92,17 @@ implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
     c.io.loss.setSinkClock(c.clock)
   }
 
-  def test( dbFile : String) = {
-    val reader = CSVReader.open(new File(dbFile))
-    val data = reader.all().map{ _.map(_.toInt)}.toIndexedSeq
-
+  def test(dbFile : String) = {
     val bd = new BitProbBundle()
-    for(line <- data) {
-      val bit = line(0)
-      val prob = line(1)
-      val loss = line(2)
-
-      c.io.P.enqueueNow(bd.Lit(_.bit -> bit.U, _.prob -> prob.U, _.last -> false.B))
-      c.clock.step()
-      c.io.loss.expectDequeueNow(loss.S(p.lossWidth))
+    new VerifyDataset(dbFile).forEachBatch(10000) { data =>
+      for(line <- data) {
+        val bit = line(0)
+        val prob = line(1)
+        val loss = line(2)
+  
+        c.io.P.enqueueNow(bd.Lit(_.bit -> bit.U, _.prob -> prob.U, _.last -> false.B))
+        c.io.loss.expectPeek(loss.S(p.lossWidth))
+      }
     }
   }
 }
@@ -198,44 +196,76 @@ implicit class UpdatePEDUT(c : UpdatePE)(implicit p : MixerParameter) {
     c.io.loss.initSource()
     c.io.loss.setSourceClock(c.clock)
 
-    c.io.updateStrm.initSource()
-    c.io.updateStrm.setSourceClock(c.clock)
+    //c.io.updateStrm.initSource()
+    //c.io.updateStrm.setSourceClock(c.clock)
 
     c.io.wStrm.initSink()
     c.io.wStrm.setSinkClock(c.clock)
   }
 
   def test(dbFile : String) = {
-    val reader = CSVReader.open(new File(dbFile))
-    val data = reader.all().map{ _.map(_.toInt)}.toIndexedSeq
     val n = p.nFeatures
-    // line
-    // X(n), W(n), Wu(n), loss
-    fork {
-      // feed X, W, loss
-      val xfrom = 0
-      val xuntil = xfrom + n
-      val wfrom = n
-      val wuntil = wfrom + n
-      val lossIdx = n * 3
-      for(line <- data) {
-        val X = line.slice(xfrom, xuntil)
-        val W = line.slice(wfrom, wuntil)
-        val loss = line(lossIdx)
+    new VerifyDataset(dbFile).forEachBatch(2000) { data =>
+      // line
+      // X(n), W(n), Wu(n), loss
+      fork {
+        // feed X, W
+        val xfrom = 0
+        val xuntil = xfrom + n
+        val wfrom = n
+        val wuntil = wfrom + n
+        
+        for(line <- data) {
+          val X = line.slice(xfrom, xuntil)
+          val W = line.slice(wfrom, wuntil)
+          for(j <- 0 until p.VecDotII) {
+            while(!c.io.updateStrm.ready.peek().litToBoolean)
+              c.clock.step()
+            
+            for(i <- 0 until p.VecDotMACNum) {
+              if(j * p.VecDotMACNum + i < p.nFeatures) {
+                c.io.updateStrm.bits.w(i).poke(W(j * p.VecDotMACNum + i).S)
+                c.io.updateStrm.bits.x(i).poke(X(j * p.VecDotMACNum + i).S)
+              } else {
+                c.io.updateStrm.bits.w(i).poke(0.S)
+                c.io.updateStrm.bits.x(i).poke(0.S)
+              }
+            }
 
-        c.io.loss.enqueueNow(loss.S(p.lossWidth))
+            c.io.updateStrm.valid.poke(true.B)
+            c.clock.step()
+          }
+        }
+      }.fork {
+        // feed loss
+        val lossIdx = n * 3
+        c.clock.step(p.VecDotII)
+        for(line <- data) {
+          val loss = line(lossIdx)
+          c.io.loss.enqueueNow(loss.S)
+          c.clock.step(p.VecDotII + 1)
+        }
+      }.fork {
+        // expect Wu
+        val sfrom = n * 2
+        val suntil = sfrom + n
+        val bd = new WeightsWriteBackBundle()
+        for(line <- data) {
+          val Wu = line.slice(sfrom, suntil)
 
-      }
-    }.fork {
-      // expect Wu
-      val sfrom = n * 2
-      val suntil = sfrom + n
-      val bd = new WeightsWriteBackBundle()
-      for(line <- data) {
-        val data = line.slice(sfrom, suntil)
+          for(j <- 0 until p.VecDotII) {
+            c.io.wStrm.waitForValid()
 
-      }
-    }.join()
+            for(i <- 0 until p.VecDotMACNum) {
+              if(j * p.VecDotMACNum + i < p.nFeatures) {
+                c.io.wStrm.bits.w(i).expect(Wu(j * p.VecDotMACNum + i).S)
+              }
+            }
+            c.clock.step()
+          }
+        }
+      }.join()
+    }
   }
 }
 
