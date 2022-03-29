@@ -120,84 +120,74 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
     c.io.P.initSink()
     c.io.P.setSinkClock(c.clock)
 
+    c.io.x.initSink()
+    c.io.x.setSinkClock(c.clock)
+
     c.io.updateStrm.initSink()
     c.io.updateStrm.setSinkClock(c.clock)
   }
-
-  def test_inst(data: IndexedSeq[Seq[Int]]) = {
-    val nFeatures = p.nFeatures
-    fork {
-      // feed Xs and bit
-      // X(n), W(n), bit, prob
-      val sfrom = 0
-      val suntil = sfrom + nFeatures
-      val bitIdx = nFeatures * 2
-      val bd = new PredictUpdateEngineXCtrlBundle()
-      for(line <- data) {
-        val Xs = line.slice(sfrom, suntil)
-        val bit = line(bitIdx)
-        c.io.in.enqueue(bd.Lit(
-          _.X -> Vec.Lit(Xs.map(_.S(p.XWidth)):_*),
-          _.bit -> bit.U,
-          _.harzardFastPath -> false.B
-        ))
-      }
-    }.fork {
-      // feed W
-      // X(n), W(n), bit, prob
-      val sfrom = nFeatures
-      val suntil = sfrom + nFeatures
-      for(line <- data) {
-        val data = line.slice(sfrom, suntil)
-        c.io.W.enqueue(Vec.Lit(data.map(_.S(p.WeightWidth)):_*))
-      }
-    }.fork {
-      // expect P
-      val bIdx = nFeatures * 2
-      val pIdx = nFeatures * 2 + 1
-      val db = new BitProbBundle()
-      for(line <- data) {
-        val bit = line(bIdx)
-        val prob = line(pIdx)
-        c.io.P.expectDequeue(db.Lit(_.bit -> bit.U, _.prob -> prob.U, _.last -> false.B))
-      }
-    }.fork {
-      // expect update stream
-      c.io.updateStrm.ready.poke(true.B)
-      for(line <- data) {
-        val X = line.slice(0, nFeatures)
-        val W = line.slice(nFeatures, nFeatures * 2)
-
-        for(j <- 0 until p.VecDotII) {
-          var valid = c.io.updateStrm.valid.peek().litToBoolean
-          while(!valid) {
-            c.clock.step()
-            valid = c.io.updateStrm.valid.peek().litToBoolean
-          }
-          
-          for(i <- 0 until p.VecDotMACNum) {
-            if(j * p.VecDotMACNum + i < nFeatures) {
-              c.io.updateStrm.bits.w(i).expect(W(j * p.VecDotMACNum + i).S)
-              c.io.updateStrm.bits.x(i).expect(X(j * p.VecDotMACNum + i).S)
-            }
-          }
-          c.clock.step()
-        }
-      }
-    }.join()
-  }
-
+  
   def test(dbFile : String) = {
-    val reader = CSVReader.open(new File(dbFile))
-    
-    val it = reader.iterator
-    var end = false
-    while(!end) { // TODO: make a util
-      val data = it.take(100000).map{ _.map(_.toInt)}.toIndexedSeq
-      if(!data.isEmpty) {
-        test_inst(data)
-      }
-      end = data.isEmpty
+    new VerifyDataset(dbFile).forEachBatch(10000) { data =>
+      val nFeatures = p.nFeatures
+      fork {
+        // feed Xs and bit
+        // X(n), W(n), bit, prob
+        val sfrom = 0
+        val suntil = sfrom + nFeatures
+        val bitIdx = nFeatures * 2
+        val bd = new PredictUpdateEngineXCtrlBundle()
+        for(line <- data) {
+          val Xs = line.slice(sfrom, suntil)
+          val bit = line(bitIdx)
+          c.io.in.enqueue(bd.Lit(
+            _.X -> Vec.Lit(Xs.map(_.S(p.XWidth)):_*),
+            _.bit -> bit.U,
+          ))
+        }
+      }.fork {
+        // feed W
+        // X(n), W(n), bit, prob
+        val sfrom = nFeatures
+        val suntil = sfrom + nFeatures
+        for(line <- data) {
+          val data = line.slice(sfrom, suntil)
+          c.io.W.enqueue(Vec.Lit(data.map(_.S(p.WeightWidth)):_*))
+        }
+      }.fork {
+        // expect P
+        val bIdx = nFeatures * 2
+        val xIdx = nFeatures * 2 + 1
+        val db = XBitBundle()
+        for(line <- data) {
+          val bit = line(bIdx)
+          val x = line(xIdx)
+          c.io.x.expectDequeue(db.Lit(_.bit -> bit.U, _.x -> x.S))
+        }
+      }.fork {
+        // expect update stream
+        c.io.updateStrm.ready.poke(true.B)
+        for(line <- data) {
+          val X = line.slice(0, nFeatures)
+          val W = line.slice(nFeatures, nFeatures * 2)
+
+          for(j <- 0 until p.VecDotII) {
+            var valid = c.io.updateStrm.valid.peek().litToBoolean
+            while(!valid) {
+              c.clock.step()
+              valid = c.io.updateStrm.valid.peek().litToBoolean
+            }
+            
+            for(i <- 0 until p.VecDotMACNum) {
+              if(j * p.VecDotMACNum + i < nFeatures) {
+                c.io.updateStrm.bits.w(i).expect(W(j * p.VecDotMACNum + i).S)
+                c.io.updateStrm.bits.x(i).expect(X(j * p.VecDotMACNum + i).S)
+              }
+            }
+            c.clock.step()
+          }
+        }
+      }.join()
     }
   }
 }

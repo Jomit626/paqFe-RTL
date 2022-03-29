@@ -10,7 +10,8 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
     val in = Flipped(DecoupledIO(new PredictUpdateEngineXCtrlBundle()))
     val W = Flipped(DecoupledIO(WeightsBundle()))
 
-    val P = ValidIO(new BitProbBundle())  // TODO: split L1 and L2
+    val P = ValidIO(new BitProbBundle())
+    val x = ValidIO(XBitBundle())
 
     val updateStrm = DecoupledIO(new WeightUpdateBundle())
   })
@@ -25,7 +26,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val macReload = Wire(Bool())
   val macCE = Wire(Bool())
 
-  val pOut = Wire(Bool())
+  val output = Wire(Bool())
 
   // data path
   val bit0 = RegEnable(io.in.bits.bit, bitLoad)
@@ -70,9 +71,16 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
     m.io.ce := macCE
   }
   val SquashLatency = 1
-  val dot = TreeReduce[SInt](macs.map(_.io.acc), (a, b) => a + b)
-  val probStrech = dot >> 16
+
+  val dot = TreeReduce[SInt](macs.map(_.io.acc), (a, b) => a + b) >> 16
+  val dotGt2047 = dot > 2047.S
+  val dotLtn2048 = dot < -2048.S
+  
+  val probStrech = Wire(SInt(p.XWidth))
+  probStrech := Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot))
+  
   val prob = RegNext(Squash(probStrech))
+  val x = RegNext(probStrech)
   val bit = ShiftRegister(bit0, macs.last.latency + SquashLatency, macCE)
 
   // Ctrl singls gen
@@ -112,7 +120,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   macReload := cnt === 0.U
   macCE := true.B
   
-  pOut := ShiftRegister(cntWrp, macs.last.latency + SquashLatency)
+  output := ShiftRegister(cntWrp, macs.last.latency + SquashLatency)
   
   // outputs
   io.in.ready := inIdle || (inWorking && cntWrp)
@@ -121,7 +129,11 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   io.P.bits.bit := bit
   io.P.bits.prob := prob
   io.P.bits.last := false.B //DontCare
-  io.P.valid := pOut
+  io.P.valid := output
+
+  io.x.bits.x := x
+  io.x.bits.bit := bit
+  io.x.valid := output
 
   for(i <- 0 until p.VecDotMACNum) {
     io.updateStrm.bits.w(i) := macs(i).io.a

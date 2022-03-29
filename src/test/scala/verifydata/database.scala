@@ -3,10 +3,28 @@ package paqFe.verifydata
 import java.io._
 import scala.io.Source
 
+import com.github.tototoshi.csv._
+
 class VerifyData(file : String) {
   val source = Source.fromFile(file)
   val data = source.getLines().map(_.split(",")).toArray
   source.close
+}
+
+class VerifyDataset(file: String) {
+  val reader = CSVReader.open(new File(file))
+
+  def forEachBatch(batchSize:Int)(f: IndexedSeq[Seq[Int]] => Unit) {
+    val it = reader.iterator
+    var end = false
+    while(!end) {
+      val data = it.take(batchSize).map{ _.map(_.toInt)}.toIndexedSeq
+      if(!data.isEmpty) {
+        f(data)
+      }
+      end = data.isEmpty
+    }
+  }
 }
 
 class ByteStream(pathname : String) {

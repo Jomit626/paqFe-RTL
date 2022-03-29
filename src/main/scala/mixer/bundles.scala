@@ -6,7 +6,15 @@ import chisel3.util._
 class PredictUpdateEngineXCtrlBundle()(implicit p : MixerParameter) extends Bundle {
   val X = Output(XsBundle())
   val bit = Output(UInt(1.W))
-  val harzardFastPath = Output(Bool())
+}
+
+class XBitBundle()(implicit p : MixerParameter) extends Bundle {
+  val x = SInt(p.XWidth)
+  val bit = UInt(1.W)
+}
+
+object XBitBundle {
+  def apply()(implicit p : MixerParameter) = new XBitBundle()
 }
 
 object XsBundle {
