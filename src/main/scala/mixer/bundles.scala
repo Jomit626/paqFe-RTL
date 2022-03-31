@@ -4,8 +4,8 @@ import chisel3._
 import chisel3.util._
 
 class PredictUpdateEngineXCtrlBundle()(implicit p : MixerParameter) extends Bundle {
-  val X = Output(XsBundle())
-  val bit = Output(UInt(1.W))
+  val X = XsBundle()
+  val bit = UInt(1.W)
 }
 
 class XBitBundle()(implicit p : MixerParameter) extends Bundle {
@@ -36,4 +36,9 @@ class WeightUpdateBundle()(implicit p : MixerParameter) extends Bundle {
 
 class WeightsWriteBackBundle()(implicit p : MixerParameter) extends Bundle {
   val w = Vec(p.VecDotMACNum, SInt(p.WeightWidth))
+}
+
+class Layer2InputBundle(implicit p: MixerParameter) extends Bundle {
+  val x = Vec(p.nHidden, SInt(p.XWidth))
+  val bit = UInt(1.W)
 }

@@ -19,7 +19,7 @@ import chisel3.experimental.VecLiterals._
 
 import paqFe._
 
-import Helpers._
+import PEHelpers._
 
 class PredictPESpec extends SpecClass{
   behavior of "Mixer Prediction Function"
@@ -81,7 +81,7 @@ class UpdatePESpec extends SpecClass {
   }
 }
 
-object Helpers {
+object PEHelpers {
 
 implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
   def init() = {

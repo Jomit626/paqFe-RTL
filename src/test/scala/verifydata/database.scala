@@ -14,7 +14,7 @@ class VerifyData(file : String) {
 class VerifyDataset(file: String) {
   val reader = CSVReader.open(new File(file))
 
-  def forEachBatch(batchSize:Int)(f: IndexedSeq[Seq[Int]] => Unit) {
+  def forEachBatch(batchSize:Int)(f: IndexedSeq[Seq[Int]] => Unit) = {
     val it = reader.iterator
     var end = false
     while(!end) {
@@ -24,6 +24,12 @@ class VerifyDataset(file: String) {
       }
       end = data.isEmpty
     }
+  }
+
+  def forAll(f: IndexedSeq[Seq[Int]] => Unit) = {
+    val data = reader.all().map{ _.map(_.toInt)}.toIndexedSeq
+
+    f(data)
   }
 }
 

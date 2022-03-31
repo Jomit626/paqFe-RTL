@@ -70,17 +70,17 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
     m.io.reload := macReload
     m.io.ce := macCE
   }
-  val SquashLatency = 1
+  val SquashLatency = 3 // TODO: retimming sum
 
   val dot = TreeReduce[SInt](macs.map(_.io.acc), (a, b) => a + b) >> 16
   val dotGt2047 = dot > 2047.S
   val dotLtn2048 = dot < -2048.S
-  
+
   val probStrech = Wire(SInt(p.XWidth))
   probStrech := Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot))
   
-  val prob = RegNext(Squash(probStrech))
-  val x = RegNext(probStrech)
+  val prob = ShiftRegister(Squash(probStrech), SquashLatency)
+  val x = ShiftRegister(probStrech, SquashLatency)
   val bit = ShiftRegister(bit0, macs.last.latency + SquashLatency, macCE)
 
   // Ctrl singls gen
@@ -164,7 +164,7 @@ class LossCalPE()(implicit p : MixerParameter) extends Module {
   val bit = RegEnable(io.P.bits.bit, probLoad)
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
-  val lr = 7.U(6.W) // TODO: Learning rate
+  val lr = 7.U // TODO: Learning rate
   val lossCal = (probExpect - prob).asSInt * lr
   val loss = lossCal
 

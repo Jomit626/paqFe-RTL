@@ -11,7 +11,7 @@ class PredictUpdateEngine()(implicit p : MixerParameter) extends Module {
     val W = Flipped(DecoupledIO(WeightsBundle()))
 
     val P = ValidIO(new BitProbBundle())
-    val Wu = ValidIO(SInt(p.WeightWidth))
+    val Wu = ValidIO(new WeightsWriteBackBundle())
   })
 
   val predictPE = Module(new PredictPE)

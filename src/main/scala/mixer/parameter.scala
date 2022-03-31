@@ -15,5 +15,7 @@ class MixerParameter(val nFeatures: Int = 75,  val nHidden: Int = 8) {
   val VecScaleSubRound = VecDotII
   
   val L1WeightInitVal = (1 << (WeightWidth.get + 1)) / nFeatures
-  val L2WeightInitVal = (1 << (WeightWidth.get + 1)) / nHidden
+  val L2WeightInitVal = (1 << 16) / nHidden
+
+  val L2BatchSize = 1024
 }
