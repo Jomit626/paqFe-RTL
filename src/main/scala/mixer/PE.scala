@@ -5,10 +5,15 @@ import chisel3.util._
 
 import paqFe.types._
 
+class VecDotPackBundle(implicit p : MixerParameter) extends Bundle {
+  val x = Vec(p.nFeatures, SInt(p.XWidth))
+  val w = Vec(p.nFeatures, SInt(p.WeightWidth))
+  val bit = UInt(1.W)
+}
+
 class PredictPE()(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(new PredictUpdateEngineXCtrlBundle()))
-    val W = Flipped(DecoupledIO(WeightsBundle()))
+    val in = Flipped(DecoupledIO(new VecDotPackBundle()))
 
     val P = ValidIO(new BitProbBundle())
     val x = ValidIO(XBitBundle())
@@ -17,9 +22,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   })
 
   // ctrl signals
-  val xLoad = Wire(Bool())
-  val wLoad = Wire(Bool())
-  val bitLoad = Wire(Bool())
+  val load = Wire(Bool())
 
   val wxSel = Wire(UInt(log2Ceil(p.VecDotII + 1).W))
 
@@ -29,20 +32,17 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val output = Wire(Bool())
 
   // data path
-  val bit0 = RegEnable(io.in.bits.bit, bitLoad)
+  val bit0 = RegEnable(io.in.bits.bit, load)
   // Registers to store input W and X
   val WReg = Reg(Vec(p.nFeatures, SInt(p.WeightWidth)))
   val XReg = Reg(Vec(p.nFeatures, SInt(p.XWidth)))
 
-  when(xLoad) {
+  when(load) {
     for(i <- 0 until p.nFeatures) {
-      XReg(i) := io.in.bits.X(i)
+      XReg(i) := io.in.bits.x(i)
     }
-  }
-
-  when(wLoad) {
     for(i <- 0 until p.nFeatures) {
-      WReg(i) := io.W.bits(i)
+      WReg(i) := io.in.bits.w(i)
     }
   }
   // Split W and X to MAC unit
@@ -91,7 +91,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val stateNxt = Wire(UInt())
   val state = RegNext(stateNxt)
 
-  val takeInput = io.in.fire && io.W.fire
+  val takeInput = io.in.fire
 
   stateNxt := state
   switch(state) {
@@ -112,9 +112,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val inWorking = state === sWorking
   cntCE := inWorking
   
-  xLoad := (inIdle && takeInput) || (inWorking && cntWrp)
-  wLoad := xLoad
-  bitLoad := wLoad
+  load := takeInput
   wxSel := cnt
   
   macReload := cnt === 0.U
@@ -124,7 +122,6 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   
   // outputs
   io.in.ready := inIdle || (inWorking && cntWrp)
-  io.W.ready := io.in.ready
 
   io.P.bits.bit := bit
   io.P.bits.prob := prob
@@ -234,4 +231,6 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
   when(inWorking) {
     assert(io.updateStrm.valid, "FIFO empty!")
   }
+
+  val latency = mss.last.latency
 }

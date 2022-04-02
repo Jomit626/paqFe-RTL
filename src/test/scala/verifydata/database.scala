@@ -14,16 +14,18 @@ class VerifyData(file : String) {
 class VerifyDataset(file: String) {
   val reader = CSVReader.open(new File(file))
 
-  def forEachBatch(batchSize:Int)(f: IndexedSeq[Seq[Int]] => Unit) = {
+  def forEachBatch(batchSize: Int)(f: (IndexedSeq[Seq[Int]], Boolean) => Unit) = {
     val it = reader.iterator
-    var end = false
-    while(!end) {
-      val data = it.take(batchSize).map{ _.map(_.toInt)}.toIndexedSeq
-      if(!data.isEmpty) {
-        f(data)
-      }
-      end = data.isEmpty
-    }
+    var data = it.take(batchSize).map{ _.map(_.toInt)}.toIndexedSeq
+    var last = false
+    do {
+      val dataNxt = it.take(batchSize).map{ _.map(_.toInt)}.toIndexedSeq
+      last = dataNxt.isEmpty
+
+      f(data, last)
+
+      data = dataNxt
+    } while(!last)
   }
 
   def forAll(f: IndexedSeq[Seq[Int]] => Unit) = {

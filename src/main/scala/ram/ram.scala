@@ -3,6 +3,8 @@ package paqFe.ram
 import chisel3._
 import chisel3.util._
 
+import paqFe.types.StatusBundle
+
 private class ByteWriteDPRamBL(col : Int, addr_width: Int) extends BlackBox(
   Map("NUM_COL" -> col,
       "ADDR_WIDTH" -> addr_width)) with HasBlackBoxResource {
@@ -131,4 +133,25 @@ class ByteWriteTDPRamFWB(col : Int, addr_width: Int) extends Module {
   inst.io.addrb := io.addrb
   io.dob := Mux(fw, inst.io.doa, inst.io.dob) 
 
+}
+
+class RamInitUnit(AddrWidth : Int) extends Module {
+  val io = IO(new Bundle{
+    val in = Flipped(ValidIO(Bool()))
+
+    val wen = Output(Bool())
+    val waddr = Output(UInt(AddrWidth.W))
+
+    val status = new StatusBundle
+  })
+
+  val initDone = RegInit(false.B)
+  val (cnt, cntDone) = Counter(0 until (1 << AddrWidth), ~initDone)
+
+  initDone := (initDone || cntDone) && ~(io.in.valid && io.in.bits)
+
+  io.wen := ~initDone
+  io.waddr := cnt
+
+  io.status.initDone := initDone
 }

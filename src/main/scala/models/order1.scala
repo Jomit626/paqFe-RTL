@@ -31,27 +31,6 @@ class Byte2Nibble(n : Int) extends Module {
   }
 }
 
-class RamInitUnit(AddrWidth : Int) extends Module {
-  val io = IO(new Bundle{
-    val in = Flipped(ValidIO(Bool()))
-
-    val wen = Output(Bool())
-    val waddr = Output(UInt(AddrWidth.W))
-
-    val status = new StatusBundle
-  })
-
-  val initDone = RegInit(false.B)
-  val (cnt, cntDone) = Counter(0 until (1 << AddrWidth), ~initDone)
-
-  initDone := (initDone || cntDone) && ~(io.in.valid && io.in.bits)
-
-  io.wen := ~initDone
-  io.waddr := cnt
-
-  io.status.initDone := initDone
-}
-
 class ContextMap(CtxWidth : Int) extends Module {
 
   val io = IO(new Bundle{

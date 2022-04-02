@@ -94,7 +94,7 @@ implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
 
   def test(dbFile : String) = {
     val bd = new BitProbBundle()
-    new VerifyDataset(dbFile).forEachBatch(10000) { data =>
+    new VerifyDataset(dbFile).forEachBatch(10000) { (data, last) =>
       for(line <- data) {
         val bit = line(0)
         val prob = line(1)
@@ -109,9 +109,6 @@ implicit class LossCalPEDUT(c : LossCalPE)(implicit p : MixerParameter) {
 
 implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
   def init() = {
-    c.io.W.initSource()
-    c.io.W.setSourceClock(c.clock)
-
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)
 
@@ -126,31 +123,26 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
   }
   
   def test(dbFile : String) = {
-    new VerifyDataset(dbFile).forEachBatch(10000) { data =>
+    new VerifyDataset(dbFile).forEachBatch(10000) { (data, last) =>
       val nFeatures = p.nFeatures
       fork {
-        // feed Xs and bit
+        // feed W, X and bit
         // X(n), W(n), bit, prob
-        val sfrom = 0
-        val suntil = sfrom + nFeatures
+        val xStart = 0
+        val xEnd = xStart + nFeatures
+        val wStart = nFeatures
+        val wEnd = wStart + nFeatures
         val bitIdx = nFeatures * 2
-        val bd = new PredictUpdateEngineXCtrlBundle()
+        val bd = new VecDotPackBundle()
         for(line <- data) {
-          val Xs = line.slice(sfrom, suntil)
+          val x = line.slice(xStart, xEnd)
+          val w = line.slice(wStart, wEnd)
           val bit = line(bitIdx)
           c.io.in.enqueue(bd.Lit(
-            _.X -> Vec.Lit(Xs.map(_.S(p.XWidth)):_*),
+            _.w -> Vec.Lit(w.map(_.S(p.WeightWidth)):_*),
+            _.x -> Vec.Lit(x.map(_.S(p.XWidth)):_*),
             _.bit -> bit.U,
           ))
-        }
-      }.fork {
-        // feed W
-        // X(n), W(n), bit, prob
-        val sfrom = nFeatures
-        val suntil = sfrom + nFeatures
-        for(line <- data) {
-          val data = line.slice(sfrom, suntil)
-          c.io.W.enqueue(Vec.Lit(data.map(_.S(p.WeightWidth)):_*))
         }
       }.fork {
         // expect P
@@ -205,7 +197,7 @@ implicit class UpdatePEDUT(c : UpdatePE)(implicit p : MixerParameter) {
 
   def test(dbFile : String) = {
     val n = p.nFeatures
-    new VerifyDataset(dbFile).forEachBatch(2000) { data =>
+    new VerifyDataset(dbFile).forEachBatch(2000) { (data, last) =>
       // line
       // X(n), W(n), Wu(n), loss
       fork {
