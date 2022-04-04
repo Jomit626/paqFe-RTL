@@ -22,7 +22,7 @@ import paqFe._
 import Layer2Helpers._
 import chisel3.experimental.VecLiterals
 
-class Layer2TestModule(implicit p: MixerParameter) extends Module {
+class MixerLayer2TestModule(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Vec(8, Flipped(DecoupledIO(new Layer2InputBundle)))
 
@@ -46,7 +46,7 @@ class MixerLayer2Spec extends SpecClass {
 
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
-      test(new Layer2TestModule())
+      test(new MixerLayer2TestModule())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
         c.init()
         c.test(output_file)
@@ -57,7 +57,7 @@ class MixerLayer2Spec extends SpecClass {
 
 object Layer2Helpers {
 
-implicit class Layer2TestDUT(c: Layer2TestModule)(implicit p: MixerParameter) {
+implicit class Layer2TestDUT(c: MixerLayer2TestModule)(implicit p: MixerParameter) {
   def init() = {
     c.io.in.foreach { in =>
       in.initSource()

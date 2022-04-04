@@ -32,7 +32,7 @@ class MixerLayer1Spec extends SpecClass {
 
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
-      test(new Layer1())
+      test(new MixerLayer1())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
         c.init()
         c.test(output_file)
@@ -43,7 +43,7 @@ class MixerLayer1Spec extends SpecClass {
 
 object Layer1Helpers {
 
-implicit class Layer1TestDUT(c: Layer1)(implicit p: MixerParameter) {
+implicit class Layer1TestDUT(c: MixerLayer1)(implicit p: MixerParameter) {
   def init() = {
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)

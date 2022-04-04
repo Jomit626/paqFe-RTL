@@ -179,7 +179,8 @@ object GetCompressorVerilog extends App {
 }
 
 import  models.ContextMap
+import paqFe.mixer.Mixer
 object GetTestVerilog extends App {
-  implicit val p = new MixerParameter(6)
-  (new ChiselStage).emitVerilog(new CompressorVerilogWrapper())
+  implicit val p = new MixerParameter()
+  (new ChiselStage).emitVerilog(new Mixer)
 }

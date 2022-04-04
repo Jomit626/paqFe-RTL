@@ -48,7 +48,7 @@ class MixerInputBundle(implicit p: MixerParameter) extends Bundle {
   val last = Bool()
 }
 
-class Layer1PE(implicit p: MixerParameter) extends Module {
+class MixerLayer1PE(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new Layer1InputBundle()))
 
@@ -156,7 +156,7 @@ class Layer1PE(implicit p: MixerParameter) extends Module {
   io.status := ramInit.io.status
 }
 
-class Layer1(implicit p: MixerParameter) extends Module {
+class MixerLayer1(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new MixerInputBundle))
 
@@ -164,7 +164,7 @@ class Layer1(implicit p: MixerParameter) extends Module {
     val status = Output(new StatusBundle())
   })
 
-  val pes = Seq.fill(p.nHidden) {Module(new Layer1PE)}
+  val pes = Seq.fill(p.nHidden) {Module(new MixerLayer1PE)}
   val allReady = pes.map(_.io.in.ready).reduce(_ && _)
   pes.zipWithIndex.foreach{ case(m, i) =>
 

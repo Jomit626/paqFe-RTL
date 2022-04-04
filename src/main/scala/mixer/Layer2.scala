@@ -5,7 +5,7 @@ import chisel3.util._
 import paqFe.types.BitProbBundle
 import paqFe.types.TreeReduce
 
-class Layer2PE(implicit p: MixerParameter) extends Module {
+class MixerLayer2PE(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(ValidIO(new Bundle {
       val x = Vec(p.nHidden, SInt(p.XWidth))
@@ -93,7 +93,7 @@ class MixerLayer2(implicit p: MixerParameter) extends Module {
 
   // data path
   val Ws = Seq.fill(p.nHidden){ RegInit(p.L2WeightInitVal.S(p.WeightWidth)) }
-  val pe = Module(new Layer2PE())
+  val pe = Module(new MixerLayer2PE())
 
   pe.io.in.bits.w := Ws
   pe.io.in.bits.x := io.in.bits.x
