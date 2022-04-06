@@ -351,3 +351,8 @@ hs_err_pid*
 # viavdo logs
 *.jou
 *.log
+
+# vivado sim
+**/xsim.dir
+axsim.sh
+xelab.pb

@@ -88,6 +88,45 @@ class CompressrorNoCDC extends Module {
   io.status := order1.io.status
 }
 
+class CompressrorNoCDCWrapped extends RawModule {
+  val ACLK = IO(Input(Clock()))
+  val ARESTN = IO(Input(Bool()))
+  val S_AXIS = IO(new Bundle {
+    val TDATA = Input(UInt(8.W))
+    val TKEEP = Input(UInt(1.W))
+    val TLAST = Input(Bool())
+    val TREADY = Output(Bool())
+    val TVALID = Input(Bool())
+  })
+
+  val M_AXIS = IO(new Bundle {
+    val TDATA = Output(UInt(16.W))
+    val TKEEP = Output(UInt(2.W))
+    val TLAST = Output(Bool())
+    val TREADY = Input(Bool())
+    val TVALID = Output(Bool())
+  })
+  withClockAndReset(ACLK, ~ARESTN) {
+    val packetOutput = Module(new PacketOutput)
+    val inst = Module(new CompressrorNoCDC)
+    
+    inst.io.in.bits.byte := S_AXIS.TDATA
+    inst.io.in.bits.last := S_AXIS.TLAST
+    inst.io.in.valid := S_AXIS.TVALID & inst.io.status.initDone
+    S_AXIS.TREADY := inst.io.in.ready & inst.io.status.initDone
+
+    packetOutput.io.in.bits := inst.io.out.bits
+    packetOutput.io.in.valid := inst.io.out.valid
+    inst.io.out.ready := packetOutput.io.in.ready
+
+    M_AXIS.TDATA := packetOutput.io.out.bits.data
+    M_AXIS.TLAST := packetOutput.io.out.bits.last
+    M_AXIS.TKEEP := "b11".U
+    M_AXIS.TVALID := packetOutput.io.out.valid
+    packetOutput.io.out.ready := M_AXIS.TREADY
+  }
+}
+
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
   val model_rst = IO(Input(Bool()))
@@ -135,7 +174,47 @@ class Compressor extends RawModule {
   }
 }
 
+class CompressrorWrapped extends RawModule {
+  val S_AXIS_ACLK = IO(Input(Clock()))
+  val S_AXIS_ARESTN = IO(Input(Bool()))
+
+  val M_AXIS_ACLK = IO(Input(Clock()))
+  val M_AXIS_ARESTN = IO(Input(Bool()))
+
+  val S_AXIS = IO(new Bundle {
+    val TDATA = Input(UInt(8.W))
+    val TKEEP = Input(UInt(1.W))
+    val TLAST = Input(Bool())
+    val TREADY = Output(Bool())
+    val TVALID = Input(Bool())
+  })
+
+  val M_AXIS = IO(new Bundle {
+    val TDATA = Output(UInt(16.W))
+    val TKEEP = Output(UInt(2.W))
+    val TLAST = Output(Bool())
+    val TREADY = Input(Bool())
+    val TVALID = Output(Bool())
+  })
+  val inst = Module(new Compressor)
+  
+  inst.model_clk := S_AXIS_ACLK
+  inst.model_rst := ~S_AXIS_ARESTN
+  inst.model_in.bits.byte := S_AXIS.TDATA
+  inst.model_in.bits.last := S_AXIS.TLAST
+  inst.model_in.valid := S_AXIS.TVALID & inst.model_status.initDone
+  S_AXIS.TREADY := inst.model_in.ready & inst.model_status.initDone
+
+  inst.coder_clk := M_AXIS_ACLK
+  inst.coder_rst := ~M_AXIS_ARESTN
+  M_AXIS.TDATA := Cat(inst.coder_out.bits.idx, inst.coder_out.bits.byte)
+  M_AXIS.TLAST := inst.coder_out.bits.last
+  M_AXIS.TKEEP := 3.U
+  M_AXIS.TVALID := inst.coder_out.valid
+  inst.coder_out.ready := M_AXIS.TREADY
+}
+
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
-  (new ChiselStage).emitVerilog(new Compressor)
+  (new ChiselStage).emitVerilog(new CompressrorNoCDCWrapped)
 }
