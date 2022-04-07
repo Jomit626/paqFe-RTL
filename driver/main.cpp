@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <chrono>
+using namespace std;
 
 #include "../paqFe/include/paqFe/StreamFile.hpp"
 
@@ -39,26 +41,40 @@ int main(int argc, char** argv) {
     return 1;
   int h2c = iopen("/dev/xdma0_h2c_0", O_WRONLY);
   int c2h = iopen("/dev/xdma0_c2h_0", O_RDONLY);
-  int fin = iopen(input_pathname, O_RDONLY);
+  FILE* fin = fopen(input_pathname, "rb");
+  fseek(fin, 0L, SEEK_END);
+  size_t fin_size = ftell(fin);
+  rewind(fin);
+
   paqFe::internal::FilesOStream<8> fout;
   fout.open(output_pathname);
 
-  constexpr size_t buffersize = 1024 * 1024;
-  constexpr int PacketSize = 64;
-  char buf[buffersize];
+  constexpr int PacketSize = 1024;
   pid_t pid = fork();
   if(pid == 0) {
-    sleep(1);
+    auto start = chrono::high_resolution_clock::now();
+    char* buf = (char*)malloc(fin_size);
     size_t size = 0;
-    size = read(fin, buf, buffersize);
+    size = fread(buf, 1, fin_size, fin);
     size = write(h2c, buf, size);
-    printf("%d bytes written\n", size);
+    int e = errno;
+    free(buf);
+    auto end = chrono::high_resolution_clock::now();
+    double time = chrono::duration_cast<chrono::nanoseconds>(end - start).count() * 1e-9;
+    double bandwidth = size / time / 1024;
+
+    printf("errno:%d, filesize %d, %d bytes written, write BW: %lf Kilo Bytes/s\n", e, fin_size, size, bandwidth);
   } else {
+
+    auto start = chrono::high_resolution_clock::now();
+    char buf[PacketSize + 64];
     int total = 0, packetCnt = 0;
     int n = read(c2h, buf, PacketSize);
+    paqFe::Header h;
+    h.origin_size.dw = fin_size;
+    fout.write_header(&h);
     while(n == PacketSize) {
       packetCnt++;
-      printf("read packet:%d %d\n", n, errno);
       uint16_t *data = (uint16_t*)buf;
       int len = data[PacketSize / 2 - 1];
       if(len == 0) {
@@ -80,6 +96,10 @@ int main(int argc, char** argv) {
       printf("error packet read %d byte, errno:%d\n", n, e);
     }
     printf("read total:%d\n", total);
+    auto end = chrono::high_resolution_clock::now();
+    double time = chrono::duration_cast<chrono::nanoseconds>(end - start).count() * 1e-9;
+    double bandwidth = fin_size / time / 1024;
+    printf("Time elapsed precise: %lfs, read BW: %lf Kilo Bytes/s\n", time, bandwidth);
     wait(NULL); 
   }
 

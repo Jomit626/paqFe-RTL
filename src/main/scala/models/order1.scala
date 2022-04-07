@@ -12,22 +12,49 @@ import types._
 class Byte2Nibble(n : Int) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new ByteBundle()))
-    val out = Vec(n, ValidIO(new NibbleBundle()))
+    val out = Vec(n, DecoupledIO(new NibbleBundle()))
   })
 
-  val s0 = 0.U(1.W)
-  val s1 = 1.U(1.W)
-  val stateNxt = Wire(UInt())
-  val state = RegNext(stateNxt, s0)
+  val inReady = WireInit(false.B)
+  val nibble = WireInit(0.U(4.W))
+  val last = WireInit(false.B)
+  val outValid = WireInit(false.B)
 
-  stateNxt := Mux(io.in.valid, ~state, state)
+  val s0 :: s1 :: Nil = Enum(2)
+  val state = RegInit(s0)
 
-  io.in.ready := state === s1
+  val allReady = io.out.map(_.ready).reduce(_ && _)
+  
+  switch(state) {
+    is(s0) {
+      nibble := io.in.bits.byte(7,4)
+      last := io.in.bits.last
+      outValid := allReady && io.in.valid
+
+      when(allReady && io.in.valid) {
+        state := s1
+      }
+    }
+
+    is(s1) {
+      nibble := io.in.bits.byte(3,0)
+      last := io.in.bits.last
+
+      inReady := allReady
+      outValid := allReady
+
+      when(allReady && io.in.valid) {
+        state := s0
+      }
+    }
+  }
+
+  io.in.ready := inReady
 
   for (i <- 0 until n) {
-    io.out(i).bits.nibble := RegNext(Mux(state === s0, io.in.bits.byte(7,4), io.in.bits.byte(3,0)))
-    io.out(i).bits.last := RegNext(io.in.bits.last)
-    io.out(i).valid := RegNext(io.in.valid, 0.U)
+    io.out(i).bits.nibble := nibble
+    io.out(i).bits.last := last
+    io.out(i).valid := outValid
   }
 }
 
@@ -55,40 +82,42 @@ class RamInitUnit(AddrWidth : Int) extends Module {
 class ContextMap(CtxWidth : Int) extends Module {
 
   val io = IO(new Bundle{
-    val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
-    val out = Vec(8, ValidIO(new BitProbBundle()))
+    val in = Flipped(DecoupledIO(new NibbleCtxBundle(CtxWidth)))
+    val out = Vec(8, DecoupledIO(new BitProbBundle()))
 
     val status = new StatusBundle
   })
 
+  val pipelineReady = Wire(Bool())
+
   val nibble = io.in.bits.nibble
   val context = io.in.bits.context
   val last = io.in.bits.last
-  val valid = io.in.valid
+  val valid = io.in.fire
 
-  val nibble_d = RegNext(nibble)
-  val context_d = RegNext(context)
-  val last_d = RegNext(last, false.B)
-  val valid_d = RegNext(valid, false.B)
+  val nibble_d = RegEnable(nibble, pipelineReady)
+  val context_d = RegEnable(context, pipelineReady)
+  val last_d = RegEnable(last, false.B, pipelineReady)
+  val valid_d = RegEnable(valid, false.B, pipelineReady)
 
-  val nibble_dd = RegNext(nibble_d)
-  val context_dd = RegNext(context_d)
-  val last_dd = RegNext(last_d, false.B)
-  val valid_dd = RegNext(valid_d, false.B)
+  val nibble_dd = RegEnable(nibble_d, pipelineReady)
+  val context_dd = RegEnable(context_d, pipelineReady)
+  val last_dd = RegEnable(last_d, false.B, pipelineReady)
+  val valid_dd = RegEnable(valid_d, false.B, pipelineReady)
 
   val harzared1 = context_d === context_dd && valid_d && valid_dd
   val harzared2 = context === context_dd && valid && valid_dd
-  val harzared2_d = RegNext(harzared2, false.B)
+  val harzared2_d = RegEnable(harzared2, false.B, pipelineReady)
 
   // duel port, A write first, B read only
   val ram = Module(new ByteWriteTDPRam(16, CtxWidth))
   val ramInit = Module(new RamInitUnit(CtxWidth))
 
-  ram.io.enb := io.in.valid
+  ram.io.enb := io.in.valid && pipelineReady
   ram.io.addrb := context
 
-  ramInit.io.in.bits := last_dd
-  ramInit.io.in.valid := valid_dd
+  ramInit.io.in.bits := last_dd & last_d
+  ramInit.io.in.valid := valid_dd && pipelineReady
 
   val dout = Reg(UInt((8 * 16).W))
   
@@ -121,26 +150,36 @@ class ContextMap(CtxWidth : Int) extends Module {
   val lineNxt = Cat(state3Nxt ++ state2Nxt ++ state1Nxt ++ state0Nxt ++ Seq(checksumNxt))
   val wen = Cat(Seq(state3OH,state2OH,state1OH,1.U(1.W),1.U(1.W)))
 
-  ram.io.ena := valid_dd | ramInit.io.wen
+  ram.io.ena := (valid_dd & pipelineReady) | ramInit.io.wen
   ram.io.wea := wen | Cat(Seq.fill(wen.getWidth){ramInit.io.wen})
   ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
   ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt, 0.U)
   
   val outSel = RegInit(false.B)
-  when(valid_dd) {
+  when(valid_dd && pipelineReady) {
     outSel := ~outSel
   }
+  pipelineReady := Mux(outSel, io.out.slice(4,8).map(_.ready).reduce(_ && _), io.out.slice(0,4).map(_.ready).reduce(_ && _))
 
-  when(harzared1) {
-    dout := lineNxt
-  }.elsewhen(harzared2_d) {
-    dout := ram.io.doa
-  }.otherwise{
-    dout := ram.io.dob
+  when(pipelineReady) {
+    when(harzared1) {
+      dout := lineNxt
+    }.elsewhen(harzared2_d) {
+      dout := ram.io.doa
+    }.otherwise{
+      dout := ram.io.dob
+    }
   }
 
   val first = RegInit(true.B)
-  first := first ^ ((first && io.out(0).valid) | (~first && last_dd))
+  when(io.out(0).fire) {
+    when(io.out(0).bits.last) {
+      first := true.B
+    }.otherwise {
+      first := false.B
+    }
+  }
+
   val probs = Seq(state0, state1, state2, state3).map(StaticStateMap(_))
 
   for(i <- 0 until 4) {
@@ -148,44 +187,63 @@ class ContextMap(CtxWidth : Int) extends Module {
       io.out(i).bits.prob := Mux(first, 2048.U, probs(i))
     else 
       io.out(i).bits.prob := probs(i)
+
     io.out(i).bits.bit := nibble_dd(3 - i)
     io.out(i).bits.last := last_dd
-    io.out(i).valid := valid_dd && ~outSel
+    io.out(i).valid := valid_dd && ~outSel && pipelineReady
     
     io.out(i + 4).bits.prob := probs(i)
     io.out(i + 4).bits.bit := nibble_dd(3 - i)
     io.out(i + 4).bits.last := last_dd
-    io.out(i + 4).valid := valid_dd && outSel
+    io.out(i + 4).valid := valid_dd && outSel && pipelineReady
   }
 
+  io.in.ready := pipelineReady
   io.status := ramInit.io.status
 }
 
 class Order1Context extends Module {
   val io = IO(new Bundle{
-    val in = Flipped(ValidIO(new NibbleBundle()))
-    val out = ValidIO(new NibbleCtxBundle(12))
+    val in = Flipped(DecoupledIO(new NibbleBundle()))
+    val out = DecoupledIO(new NibbleCtxBundle(12))
   })
 
-  val ctxNxt = Wire(UInt())
-  val ctx = RegEnable(ctxNxt, 0.U, io.in.valid)
+  val outValid = RegEnable(io.in.valid, false.B, io.in.ready)
+  val inReady = io.out.ready || ~outValid
 
-  val last = io.in.bits.last
-  val last_d = RegNext(last, false.B)
+  // datapath
+  val ctx = RegInit(0.U(12.W))
+  val ctxNxt = RegInit(0.U(12.W))
+  val nibble = Reg(UInt(4.W))
+  val last = RegInit(false.B)
+  val last_d = RegInit(false.B)
 
-  ctxNxt := Mux(last && last_d, 0.U, Cat(ctx(7, 0), io.in.bits.nibble))
+  when(io.in.fire) {
+    ctx := ctxNxt
+    ctxNxt := Cat(ctxNxt(7, 0), io.in.bits.nibble)
+    nibble := io.in.bits.nibble
+    last := io.in.bits.last
+    last_d := last
+  }
+
+  when(io.out.fire && io.out.bits.last && last_d) {
+    ctx := 0.U
+    ctxNxt := 0.U
+  }
+
+  io.in.ready := inReady
 
   io.out.bits.context := ctx
-  io.out.bits.nibble := io.in.bits.nibble
-  io.out.bits.last := io.in.bits.last
-  io.out.valid := io.in.valid
+  io.out.bits.nibble := nibble
+  io.out.bits.last := last
+  io.out.valid := outValid
 }
 
 
 class Order1 extends Module {
   val io = IO(new Bundle{
-    val in = Flipped(ValidIO(new NibbleBundle()))
-    val out = Vec(8, ValidIO(new BitProbBundle()))
+    val in = Flipped(DecoupledIO(new NibbleBundle()))
+    val out = Vec(8, DecoupledIO(new BitProbBundle()))
 
     val status = new StatusBundle
   })
@@ -193,9 +251,9 @@ class Order1 extends Module {
   val contextGen = Module(new Order1Context()).io
   val contextMap = Module(new ContextMap(12)).io
 
-  contextGen.in := io.in
-  contextMap.in := contextGen.out
-  (0 until 8).map(i => io.out(i) := contextMap.out(i))
+  contextGen.in <> io.in
+  contextMap.in <> contextGen.out
+  (0 until 8).map(i => io.out(i) <> contextMap.out(i))
 
   io.status := contextMap.status
 }

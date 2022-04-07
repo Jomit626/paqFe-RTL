@@ -8,7 +8,7 @@ import models.{Order1, Byte2Nibble}
 
 class CoderAribiter extends Module {
   val io = IO(new Bundle {
-    val in = Vec(8, Flipped(ValidIO(new ByteBundle())))
+    val in = Vec(8, Flipped(DecoupledIO(new ByteBundle())))
     val out = DecoupledIO(new ByteIdxBundle())
   })
 
@@ -16,8 +16,7 @@ class CoderAribiter extends Module {
   val arb = Module(new RRArbiter(new ByteBundle(), 8))
 
   (0 until 8).map{ i =>
-    queues(i).io.enq.bits := io.in(i).bits
-    queues(i).io.enq.valid := io.in(i).valid
+    queues(i).io.enq <> io.in(i)
 
     arb.io.in(i) <> queues(i).io.deq
   }
@@ -38,7 +37,7 @@ class CoderAribiter extends Module {
 }
 
 object Model2CoderCrossing {
-  def apply(ins : Vec[ValidIO[BitProbBundle]],
+  def apply(ins : Vec[DecoupledIO[BitProbBundle]],
             mClock : Clock, mRest : Bool,
             cClock : Clock, cRest : Bool)
      : Vec[DecoupledIO[BitProbBundle]] = {
@@ -51,8 +50,7 @@ object Model2CoderCrossing {
       queues(i).io.deq_clock := cClock
       queues(i).io.deq_reset := cRest
 
-      queues(i).io.enq.bits := ins(i).bits
-      queues(i).io.enq.valid := ins(i).valid
+      queues(i).io.enq <> ins(i)
 
       outs(i) <> queues(i).io.deq
     }
@@ -79,7 +77,7 @@ class CompressrorNoCDC extends Module {
   order1.io.in <> byte2nibble.io.out(0)
 
   (0 until 8).map{ i =>
-    coders(i).io.in  <> Pipe(order1.io.out(i))
+    coders(i).io.in  <> order1.io.out(i)
     arib.io.in(i) <> coders(i).io.out
   }
 

@@ -8,7 +8,7 @@ import chiseltest._
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
+import scala.util.Random
 import verifydata._
 import types._
 
@@ -93,6 +93,14 @@ class CompressrorNoCDCSpec extends AnyFlatSpec
         dutTest(c, input_file, output_file)
       } 
     }
+    it should "tolerate throttling with data: " + test_name in {
+      test(new CompressrorNoCDC)
+      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+        dutTestInit(c)
+        statusWaitInitDone(c.clock, c.io.status)
+        dutTest(c, input_file, output_file, true)
+      } 
+    }
   }
 
   it should "take multiple streams without reset between and output currect data" in {
@@ -120,7 +128,7 @@ private object LocalHelpers {
     c.io.out.setSinkClock(c.clock)
   }
 
-  def dutTest(c : CompressrorNoCDC, input_file : String, output_file : String) = {
+  def dutTest(c : CompressrorNoCDC, input_file : String, output_file : String, randomThrottle: Boolean = false) = {
     val is = new ByteStream(input_file)
     val oss = (0 until 8).map(i => new ByteStream(output_file + s".$i"))
 
@@ -150,6 +158,12 @@ private object LocalHelpers {
         c.io.out.bits.byte.expect((byte & 0xFF).U)
 
         c.clock.step()
+        if(randomThrottle) {
+          c.io.out.ready.poke(false.B)
+          val t = Random.between(0, 128)
+          c.clock.step((t - 32) max 0)
+          c.io.out.ready.poke(true.B)
+        }
       }
     }.join()
 

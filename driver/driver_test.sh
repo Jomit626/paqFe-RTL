@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -e
+set -e
 
 PROJ_FOLDER="$(realpath $(dirname "$0")/..)"
 
@@ -17,10 +17,11 @@ do
   input=${line[1]}
   output=${line[2]}
   rm -f $TMP_FOLDER/$test_name*
-  sudo ./paqfe-rtl -i $input -o $TMP_FOLDER/$test_name
+  sudo $PROJ_FOLDER/driver/paqfe-rtl -i $input -o $TMP_FOLDER/$test_name
 
   for i in {0..7}
   do
-    diff -s $TMP_FOLDER/$test_name.$i $output.$i
+    cmp $TMP_FOLDER/$test_name.$i $output.$i
   done
+  echo $test_name PASS!
 done

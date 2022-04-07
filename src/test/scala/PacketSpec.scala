@@ -12,8 +12,6 @@ import org.scalatest.matchers.should.Matchers
 import verifydata._
 import types._
 
-import LocalHelpers._
-import testhelpers.Helpers._
 
 class PacketOutputSpec extends AnyFlatSpec
   with ChiselScalatestTester {

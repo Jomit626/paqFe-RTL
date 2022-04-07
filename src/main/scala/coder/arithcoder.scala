@@ -7,9 +7,9 @@ import types._
 
 
 class ArithCoder extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(ValidIO(new BitProbBundle))
-    val out = ValidIO(new ByteBundle)
+  val io = IO(new Bundle {  
+    val in = Flipped(DecoupledIO(new BitProbBundle))
+    val out = DecoupledIO(new ByteBundle)
   })
 
   val prob = io.in.bits.prob
@@ -32,21 +32,28 @@ class ArithCoder extends Module {
 
   val outputOH = RegInit(1.U(4.W))
   val outputLast = RegInit(false.B)
-  outputLast := (io.in.valid && last) || (outputLast && ~outputOH(3))
+  when(io.in.fire && last) {
+    outputLast := true.B
+  }.elsewhen(io.out.fire && io.out.bits.last) {
+    outputLast := false.B
+  }
 
-  when(outputLast) {
+  when(outputLast && io.out.fire) {
     outputOH := Cat(outputOH(2,0), outputOH(3))
   }
   val tailLast = outputOH(3)
   val tailByte = Mux1H(outputOH, Seq(low(31, 24), low(23,16), low(15,8), low(7,0)))
 
-  when(io.in.valid) {
+  when(io.in.fire) {
     low := lowNxt
     high := highNxt
-  }.elsewhen(tailLast) {
-    low := 0.U
-    high := 0xFFFFFFFFL.U
   }
+  when(io.out.fire && io.out.bits.last) {
+    low := 0.U
+      high := 0xFFFFFFFFL.U
+  }
+
+  io.in.ready := io.out.ready && ~outputLast
 
   io.out.bits.byte := Mux(outputLast, tailByte, lowUpdate(31, 24))
   io.out.bits.last := outputOH(3) === 1.U

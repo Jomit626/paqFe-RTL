@@ -15,7 +15,7 @@ class PacketOutput extends Module {
   val outData = WireInit(0.U)
   val outLast = WireInit(false.B)
 
-  val PacketSize = 64 // Bytes
+  val PacketSize = 1024 // Bytes
   val n = PacketSize / (16 / 8) // n input per packer
 
   val cntInc = WireInit(false.B)

@@ -9,7 +9,7 @@ import chiseltest._
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
+import scala.util.Random
 import verifydata._
 import types._
 
@@ -22,7 +22,7 @@ import testhelpers.Helpers._
 class Order1TestWapper extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new ByteBundle()))
-    val out = Vec(8, ValidIO(new BitProbBundle()))
+    val out = Vec(8, DecoupledIO(new BitProbBundle()))
 
     val status = new StatusBundle
   })
@@ -30,11 +30,11 @@ class Order1TestWapper extends Module {
   val byte2nibble = Module(new Byte2Nibble(1))
   val order1 = Module(new Order1())
 
-  byte2nibble.io.in <> io.in
+  byte2nibble.io.in <> Queue(io.in, 16)
   order1.io.in <> byte2nibble.io.out(0)
 
   (0 until 8).map{ i =>
-    io.out(i) := order1.io.out(i)
+    io.out(i) <> order1.io.out(i)
   }
 
   io.status := order1.io.status
@@ -47,6 +47,7 @@ class Order1Spec
   behavior of "Order1 and Byte2Nibble"
 
   val db = new VerifyData("./paqFe/verify/db/order1")
+  
   for(line <- db.data) {
     val data_name = line(0)
     val input_file = line(1)
@@ -62,8 +63,19 @@ class Order1Spec
         dutTest(c, input_file, output_file)
       }
     }
-  }
 
+    it should "tolerate throttling with data: " + data_name in {
+      test(new Order1TestWapper)
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      
+        dutTestInit(c)
+        statusWaitInitDone(c.clock, c.io.status)
+
+        dutTest(c, input_file, output_file, true)
+      }
+    }
+  }
+  
   it should "take multiple streams without reset between and output currect data" in {
     test(new Order1TestWapper)
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -73,7 +85,7 @@ class Order1Spec
         val data_name = line(0)
         val input_file = line(1)
         val output_file = line(2)
-
+        println(data_name)
         statusWaitInitDone(c.clock, c.io.status)
         dutTest(c, input_file, output_file)
       }
@@ -99,7 +111,7 @@ private object LocalHelpers {
     c.clock.step()
   }
 
-  def dutTest(c : Order1TestWapper, input_file : String, output_file : String) = {
+  def dutTest(c : Order1TestWapper, input_file : String, output_file : String, randomThrottle: Boolean = false) = {
     val is = new ByteStream(input_file)
     val reader = CSVReader.open(new File(output_file))
 
@@ -109,11 +121,12 @@ private object LocalHelpers {
     var thr = fork {
       val bd = new ByteBundle()
       var flag = true
+      var cnt = 0
       while(flag) {
         val (byte, last) = is.getByte()
         c.io.in.enqueue(bd.Lit(_.byte -> (byte & 0xFF).U, _.last -> last.B))
-        
         flag = !last
+        cnt = cnt + 1
       }
     }
     
@@ -128,6 +141,9 @@ private object LocalHelpers {
             _.prob -> prob.U,
             _.last -> (idx == (bitProbs.length / 8 - 1)).B
           ))
+          if(randomThrottle) {
+            c.clock.step(Random.between(0, 4))
+          }
         }
       }
     }
