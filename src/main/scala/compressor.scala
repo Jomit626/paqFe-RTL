@@ -12,7 +12,7 @@ class CoderAribiter extends Module {
     val out = DecoupledIO(new ByteIdxBundle())
   })
 
-  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 32)))
+  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 128)))
   val arb = Module(new RRArbiter(new ByteBundle(), 8))
 
   (0 until 8).map{ i =>
@@ -42,7 +42,7 @@ object Model2CoderCrossing {
             cClock : Clock, cRest : Bool)
      : Vec[DecoupledIO[BitProbBundle]] = {
     val outs = Wire(Vec(ins.length, new DecoupledIO(new BitProbBundle)))
-    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 32))}
+    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 128))}
 
     (0 until ins.length).map{ i =>
       queues(i).io.enq_clock := mClock
@@ -194,7 +194,12 @@ class CompressrorWrapped extends RawModule {
     val TREADY = Input(Bool())
     val TVALID = Output(Bool())
   })
+  var packetOutput: PacketOutput = null
+  withClockAndReset(M_AXIS_ACLK, ~M_AXIS_ARESTN) {
+    packetOutput = Module(new PacketOutput)
+  }
   val inst = Module(new Compressor)
+
   
   inst.model_clk := S_AXIS_ACLK
   inst.model_rst := ~S_AXIS_ARESTN
@@ -203,16 +208,22 @@ class CompressrorWrapped extends RawModule {
   inst.model_in.valid := S_AXIS.TVALID & inst.model_status.initDone
   S_AXIS.TREADY := inst.model_in.ready & inst.model_status.initDone
 
+  
   inst.coder_clk := M_AXIS_ACLK
   inst.coder_rst := ~M_AXIS_ARESTN
-  M_AXIS.TDATA := Cat(inst.coder_out.bits.idx, inst.coder_out.bits.byte)
-  M_AXIS.TLAST := inst.coder_out.bits.last
-  M_AXIS.TKEEP := 3.U
-  M_AXIS.TVALID := inst.coder_out.valid
-  inst.coder_out.ready := M_AXIS.TREADY
+  
+  packetOutput.io.in <> inst.coder_out
+
+  M_AXIS.TDATA := packetOutput.io.out.bits.data
+  M_AXIS.TLAST := packetOutput.io.out.bits.last
+  M_AXIS.TKEEP := "b11".U
+  M_AXIS.TVALID := packetOutput.io.out.valid
+  packetOutput.io.out.ready := M_AXIS.TREADY
 }
 
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
-  (new ChiselStage).emitVerilog(new CompressrorNoCDCWrapped)
+  //(new ChiselStage).emitVerilog(new Compressor)
+  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(8.W), 128))
+  (new ChiselStage).emitVerilog(new CompressrorWrapped)
 }

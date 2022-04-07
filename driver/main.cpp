@@ -42,6 +42,7 @@ int main(int argc, char** argv) {
   int h2c = iopen("/dev/xdma0_h2c_0", O_WRONLY);
   int c2h = iopen("/dev/xdma0_c2h_0", O_RDONLY);
   FILE* fin = fopen(input_pathname, "rb");
+  FILE* outputDump = fopen("./t", "wb");
   fseek(fin, 0L, SEEK_END);
   size_t fin_size = ftell(fin);
   rewind(fin);
@@ -61,9 +62,9 @@ int main(int argc, char** argv) {
     free(buf);
     auto end = chrono::high_resolution_clock::now();
     double time = chrono::duration_cast<chrono::nanoseconds>(end - start).count() * 1e-9;
-    double bandwidth = size / time / 1024;
+    double bandwidth = size / time / 1024 / 1024;
 
-    printf("errno:%d, filesize %d, %d bytes written, write BW: %lf Kilo Bytes/s\n", e, fin_size, size, bandwidth);
+    printf("filesize %d, %d bytes written, write BW: %lf MBs\n", fin_size, size, bandwidth);
   } else {
 
     auto start = chrono::high_resolution_clock::now();
@@ -73,23 +74,29 @@ int main(int argc, char** argv) {
     paqFe::Header h;
     h.origin_size.dw = fin_size;
     fout.write_header(&h);
+    fwrite(buf, 1, n, outputDump);
+    //printf("Packet len %d\n", n);
     while(n == PacketSize) {
       packetCnt++;
+
       uint16_t *data = (uint16_t*)buf;
       int len = data[PacketSize / 2 - 1];
       if(len == 0) {
-        printf("end Packet\n");
+        //printf("end Packet\n");
         break;
       }
       for(int i=0;i<len;i++) {
         uint16_t pack = data[i];
         uint8_t idx = (pack >> 8) & 0xFF;
         uint8_t byte = pack & 0xFF;
-        fout.write_byte(byte, idx);
+        if(idx >= 0 &&idx < 8){
+          fout.write_byte(byte, idx);
+        }
       }
 
       total += len;
       n = read(c2h, buf, PacketSize);
+      fwrite(buf, 1, n, outputDump);
     }
     if(n != PacketSize) {
       int e = errno;
@@ -99,7 +106,7 @@ int main(int argc, char** argv) {
     auto end = chrono::high_resolution_clock::now();
     double time = chrono::duration_cast<chrono::nanoseconds>(end - start).count() * 1e-9;
     double bandwidth = fin_size / time / 1024;
-    printf("Time elapsed precise: %lfs, read BW: %lf Kilo Bytes/s\n", time, bandwidth);
+    //printf("Time elapsed precise: %lfs, read BW: %lf Kilo Bytes/s\n", time, bandwidth);
     wait(NULL); 
   }
 
