@@ -223,7 +223,9 @@ class CompressrorWrapped extends RawModule {
 
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
-  //(new ChiselStage).emitVerilog(new Compressor)
-  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(8.W), 128))
+  (new ChiselStage).emitVerilog(new Compressor)
+  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(9.W), 128))
   (new ChiselStage).emitVerilog(new CompressrorWrapped)
+  (new ChiselStage).emitVerilog(new CompressrorNoCDCWrapped)
+  
 }

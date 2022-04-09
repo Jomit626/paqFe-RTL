@@ -15,7 +15,9 @@ class PacketOutput extends Module {
   val outData = WireInit(0.U)
   val outLast = WireInit(false.B)
 
-  val PacketSize = 1024 // Bytes
+  val PacketSize = 4096 // Bytes
+  require(isPow2(PacketSize))
+  
   val n = PacketSize / (16 / 8) // n input per packer
 
   val cntInc = WireInit(false.B)
@@ -83,4 +85,31 @@ class PacketOutput extends Module {
   io.out.bits.data := outData
   io.out.bits.last := outLast
   io.out.valid := outValid
+}
+
+class AXISBundle1(Width: Int) extends Bundle {
+  require(Width % 8 == 0)
+
+  val TDATA = UInt(Width.W)
+  val TLAST = Bool()
+}
+
+class PacketInput extends Module {
+  val AXIBitWidth = 64
+  val AXIByteWidth = AXIBitWidth / 8
+
+  val io = IO(new Bundle {
+    val in = Flipped(DecoupledIO(new AXISBundle1(64)))
+
+    val out = DecoupledIO(new AXISBundle1(64))
+  })
+
+  val PacketSize = 1024 // Bytes
+  val n = PacketSize / AXIByteWidth // n input per packer
+
+  val packetHead = Reg(UInt(64.W))
+  val packetLen = packetHead(0, 55)
+  val packetFlag = packetHead(56, 63)
+
+
 }
