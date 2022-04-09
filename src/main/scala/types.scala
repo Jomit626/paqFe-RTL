@@ -9,6 +9,11 @@ class ByteIdxBundle extends Bundle {
   val last = Output(Bool())
 }
 
+class CompressorOutputBundle extends Bundle {
+  val data = UInt(16.W)
+  val last = Bool()
+}
+
 class ByteBundle extends Bundle {
   val byte = Output(UInt(8.W))
   val last = Output(Bool())

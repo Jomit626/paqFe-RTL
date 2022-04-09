@@ -66,6 +66,16 @@ class ArithCoderSpec
 
       }
     }
+
+    it should "tolerate throttling with data: " + test_name in {
+      test(new ArithCoder)
+      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      
+        dutTestInit(c)
+        dutTest(c, input_file, output_file, true)
+
+      }
+    }
   }
 
   it should "take multiple streams without reset between and output currect data" in {
@@ -83,7 +93,7 @@ class ArithCoderSpec
     }
   }
 }
-
+import scala.util.Random
 private object LocalHelpers {
   def dutTestInit(c : ArithCoder) = {
     c.io.in.initSource()
@@ -98,7 +108,7 @@ private object LocalHelpers {
     c.clock.step()
   }
 
-  def dutTest(c : ArithCoder, input_file : String, output_file : String) = {
+  def dutTest(c : ArithCoder, input_file : String, output_file : String, randomThrottle: Boolean = false) = {
     val is = new ByteStream(input_file)
     val reader = CSVReader.open(new File(output_file))
 
@@ -112,7 +122,7 @@ private object LocalHelpers {
       while(flag) {
         val (byte, last) = is.getByte()
         for(j <- 0 until 8) {
-          c.io.in.enqueueNow(bd.Lit(
+          c.io.in.enqueue(bd.Lit(
             _.bit -> ((byte >> (7 - j)) & 0x1).U,
             _.prob -> prob.U,
             _.last -> (last && j == 7).B
@@ -129,6 +139,9 @@ private object LocalHelpers {
       val bd = new ByteBundle
       for((byte, i) <- outputData.zipWithIndex) {
         c.io.out.expectDequeue(bd.Lit(_.byte -> byte.U, _.last -> (i == (outputData.size - 1)).B))
+        if(randomThrottle) {
+          c.clock.step(Random.between(0, 2))
+        }
       }
     }.join()
 

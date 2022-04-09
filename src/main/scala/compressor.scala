@@ -12,16 +12,15 @@ import paqFe.mixer._
 
 class CoderAribiter extends Module {
   val io = IO(new Bundle {
-    val in = Vec(8, Flipped(ValidIO(new ByteBundle())))
+    val in = Vec(8, Flipped(DecoupledIO(new ByteBundle())))
     val out = DecoupledIO(new ByteIdxBundle())
   })
 
-  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 32)))
+  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 128)))
   val arb = Module(new RRArbiter(new ByteBundle(), 8))
 
   (0 until 8).map{ i =>
-    queues(i).io.enq.bits := io.in(i).bits
-    queues(i).io.enq.valid := io.in(i).valid
+    queues(i).io.enq <> io.in(i)
 
     arb.io.in(i) <> queues(i).io.deq
   }
@@ -42,12 +41,12 @@ class CoderAribiter extends Module {
 }
 
 object Model2CoderCrossing {
-  def apply(ins : Vec[ValidIO[BitProbBundle]],
+  def apply(ins : Vec[DecoupledIO[BitProbBundle]],
             mClock : Clock, mRest : Bool,
             cClock : Clock, cRest : Bool)
      : Vec[DecoupledIO[BitProbBundle]] = {
     val outs = Wire(Vec(ins.length, new DecoupledIO(new BitProbBundle)))
-    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 32))}
+    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 128))}
 
     (0 until ins.length).map{ i =>
       queues(i).io.enq_clock := mClock
@@ -55,8 +54,7 @@ object Model2CoderCrossing {
       queues(i).io.deq_clock := cClock
       queues(i).io.deq_reset := cRest
 
-      queues(i).io.enq.bits := ins(i).bits
-      queues(i).io.enq.valid := ins(i).valid
+      queues(i).io.enq <> ins(i)
 
       outs(i) <> queues(i).io.deq
     }
@@ -83,7 +81,7 @@ class CompressrorNoCDC extends Module {
   order1.io.in <> byte2nibble.io.out(0)
 
   (0 until 8).map{ i =>
-    coders(i).io.in  <> Pipe(order1.io.out(i))
+    coders(i).io.in  <> order1.io.out(i)
     arib.io.in(i) <> coders(i).io.out
   }
 
@@ -92,38 +90,43 @@ class CompressrorNoCDC extends Module {
   io.status := order1.io.status
 }
 
-class VerilogAXISBundle(val addrWidth: Int) extends Bundle {
-  val TVALID = Output(Bool())
-  val TREADY = Input(Bool())
+class CompressrorNoCDCWrapped extends RawModule {
+  val ACLK = IO(Input(Clock()))
+  val ARESTN = IO(Input(Bool()))
+  val S_AXIS = IO(new Bundle {
+    val TDATA = Input(UInt(8.W))
+    val TKEEP = Input(UInt(1.W))
+    val TLAST = Input(Bool())
+    val TREADY = Output(Bool())
+    val TVALID = Input(Bool())
+  })
 
-  val TLAST = Output(Bool())
-  val TDATA = Output(UInt(addrWidth.W))
-}
+  val M_AXIS = IO(new Bundle {
+    val TDATA = Output(UInt(16.W))
+    val TKEEP = Output(UInt(2.W))
+    val TLAST = Output(Bool())
+    val TREADY = Input(Bool())
+    val TVALID = Output(Bool())
+  })
+  withClockAndReset(ACLK, ~ARESTN) {
+    val packetOutput = Module(new PacketOutput)
+    val inst = Module(new CompressrorNoCDC)
+    
+    inst.io.in.bits.byte := S_AXIS.TDATA
+    inst.io.in.bits.last := S_AXIS.TLAST
+    inst.io.in.valid := S_AXIS.TVALID & inst.io.status.initDone
+    S_AXIS.TREADY := inst.io.in.ready & inst.io.status.initDone
 
-class CompressorVerilogWrapper extends RawModule {
-  val S_AXIS = IO(Flipped(new VerilogAXISBundle(8)))
-  val S_AXIS_CLK = IO(Input(Clock()))
-  val S_AXIS_ARESTN = IO(Input(Bool()))
+    packetOutput.io.in.bits := inst.io.out.bits
+    packetOutput.io.in.valid := inst.io.out.valid
+    inst.io.out.ready := packetOutput.io.in.ready
 
-  val M_AXIS = IO(new VerilogAXISBundle(16))
-  val M_AXIS_CLK = IO(Input(Clock()))
-  val M_AXIS_ARESTN = IO(Input(Bool()))
-
-  val inst = Module(new Compressor())
-
-  inst.model_clk := S_AXIS_CLK
-  inst.model_rst := ~S_AXIS_ARESTN
-  inst.model_in.valid := S_AXIS.TVALID && inst.model_status.initDone
-  S_AXIS.TREADY := inst.model_in.ready  && inst.model_status.initDone
-  inst.model_in.bits.byte := S_AXIS.TDATA
-  inst.model_in.bits.last := S_AXIS.TLAST 
-
-  inst.coder_clk := M_AXIS_CLK
-  inst.coder_rst := ~M_AXIS_ARESTN
-  M_AXIS.TVALID := inst.coder_out.valid
-  inst.coder_out.ready := M_AXIS.TREADY
-  M_AXIS.TDATA := Cat(inst.coder_out.bits.byte, inst.coder_out.bits.idx)
-  M_AXIS.TLAST := inst.coder_out.bits.last
+    M_AXIS.TDATA := packetOutput.io.out.bits.data
+    M_AXIS.TLAST := packetOutput.io.out.bits.last
+    M_AXIS.TKEEP := "b11".U
+    M_AXIS.TVALID := packetOutput.io.out.valid
+    packetOutput.io.out.ready := M_AXIS.TREADY
+  }
 }
 
 class Compressor extends RawModule {
@@ -173,9 +176,62 @@ class Compressor extends RawModule {
   }
 }
 
+class CompressrorWrapped extends RawModule {
+  val S_AXIS_ACLK = IO(Input(Clock()))
+  val S_AXIS_ARESTN = IO(Input(Bool()))
+
+  val M_AXIS_ACLK = IO(Input(Clock()))
+  val M_AXIS_ARESTN = IO(Input(Bool()))
+
+  val S_AXIS = IO(new Bundle {
+    val TDATA = Input(UInt(8.W))
+    val TKEEP = Input(UInt(1.W))
+    val TLAST = Input(Bool())
+    val TREADY = Output(Bool())
+    val TVALID = Input(Bool())
+  })
+
+  val M_AXIS = IO(new Bundle {
+    val TDATA = Output(UInt(16.W))
+    val TKEEP = Output(UInt(2.W))
+    val TLAST = Output(Bool())
+    val TREADY = Input(Bool())
+    val TVALID = Output(Bool())
+  })
+  var packetOutput: PacketOutput = null
+  withClockAndReset(M_AXIS_ACLK, ~M_AXIS_ARESTN) {
+    packetOutput = Module(new PacketOutput)
+  }
+  val inst = Module(new Compressor)
+
+  
+  inst.model_clk := S_AXIS_ACLK
+  inst.model_rst := ~S_AXIS_ARESTN
+  inst.model_in.bits.byte := S_AXIS.TDATA
+  inst.model_in.bits.last := S_AXIS.TLAST
+  inst.model_in.valid := S_AXIS.TVALID & inst.model_status.initDone
+  S_AXIS.TREADY := inst.model_in.ready & inst.model_status.initDone
+
+  
+  inst.coder_clk := M_AXIS_ACLK
+  inst.coder_rst := ~M_AXIS_ARESTN
+  
+  packetOutput.io.in <> inst.coder_out
+
+  M_AXIS.TDATA := packetOutput.io.out.bits.data
+  M_AXIS.TLAST := packetOutput.io.out.bits.last
+  M_AXIS.TKEEP := "b11".U
+  M_AXIS.TVALID := packetOutput.io.out.valid
+  packetOutput.io.out.ready := M_AXIS.TREADY
+}
+
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
   (new ChiselStage).emitVerilog(new Compressor)
+  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(9.W), 128))
+  (new ChiselStage).emitVerilog(new CompressrorWrapped)
+  (new ChiselStage).emitVerilog(new CompressrorNoCDCWrapped)
+  
 }
 
 import  models.ContextMap
