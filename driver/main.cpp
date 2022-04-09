@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
   paqFe::internal::FilesOStream<8> fout;
   fout.open(output_pathname);
 
-  constexpr int PacketSize = 1024;
+  constexpr int PacketSize = 4096;
   pid_t pid = fork();
   if(pid == 0) {
     auto start = chrono::high_resolution_clock::now();

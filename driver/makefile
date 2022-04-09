@@ -1,5 +1,5 @@
-all: main.cpp
+all: main.cpp test
 	g++ main.cpp -o paqfe-rtl
 
-test: test.cpp 
-	g++ test.cpp -o test
+test: xdma_test.cpp 
+	g++ xdma_test.cpp -o xdma_test
