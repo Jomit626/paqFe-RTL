@@ -3,13 +3,9 @@ package paqFe.mixer
 import chisel3._
 import chisel3.util._
 
-class PredictUpdateEngineXCtrlBundle()(implicit p : MixerParameter) extends Bundle {
-  val X = XsBundle()
-  val bit = UInt(1.W)
-}
-
 class XBitBundle()(implicit p : MixerParameter) extends Bundle {
   val x = SInt(p.XWidth)
+  val last = Bool()
   val bit = UInt(1.W)
 }
 
@@ -40,5 +36,6 @@ class WeightsWriteBackBundle()(implicit p : MixerParameter) extends Bundle {
 
 class Layer2InputBundle(implicit p: MixerParameter) extends Bundle {
   val x = Vec(p.nHidden, SInt(p.XWidth))
+  val last = Bool()
   val bit = UInt(1.W)
 }

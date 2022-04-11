@@ -11,6 +11,7 @@ class MixerLayer2PE(implicit p: MixerParameter) extends Module {
       val x = Vec(p.nHidden, SInt(p.XWidth))
       val w = Vec(p.nHidden, SInt(p.WeightWidth))
       val reload = Bool()
+      val last = Bool()
       val bit = UInt(1.W)
     }))
 
@@ -44,6 +45,7 @@ class MixerLayer2PE(implicit p: MixerParameter) extends Module {
 
   val lossCalculationLatency = 1
   val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency)
+  val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency)
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
   val lr = 3.U // TODO: Learning rate
@@ -70,11 +72,38 @@ class MixerLayer2PE(implicit p: MixerParameter) extends Module {
   io.out.valid := probValid
   io.out.bits.bit := bit
   io.out.bits.prob := prob
-  io.out.bits.last := false.B // DontCare ?
+  io.out.bits.last := last
 
   io.dw zip dW foreach {case (a, b) => a := b}
 
   val latency = vecDotLatency + probSquashLatency + lossCalculationLatency
+}
+
+class WeightAdd(implicit p: MixerParameter) extends Module {
+  val io = IO(new Bundle {
+    val a = Input(SInt(p.WeightWidth))
+    val b = Input(SInt(p.WeightWidth))
+    val c = Output(SInt(p.WeightWidth))
+  })
+  def getSign(x: SInt) = x(x.getWidth - 1)
+
+  val s = io.a + io.b
+  val aSign = getSign(io.a)
+  val bSign = getSign(io.b)
+  val sSign = getSign(s)
+  val overflow = ~aSign && ~bSign && sSign
+  val underflow = aSign && bSign && ~sSign
+
+  io.c := Mux(overflow, 65535.S, Mux(underflow, -65536.S, s))
+}
+
+object WeightAdd {
+  def apply(a: SInt, b: SInt)(implicit p: MixerParameter): SInt = {
+    val m = Module(new WeightAdd())
+    m.io.a := a
+    m.io.b := b
+    m.io.c
+  }
 }
 
 class MixerLayer2(implicit p: MixerParameter) extends Module {
@@ -90,25 +119,28 @@ class MixerLayer2(implicit p: MixerParameter) extends Module {
   val peReload = WireInit(false.B)
 
   val weightUpdate = WireInit(false.B)
-
+  val weightReset = WireInit(false.B)
   // data path
-  val Ws = Seq.fill(p.nHidden){ RegInit(p.L2WeightInitVal.S(p.WeightWidth)) }
+  val Ws = Seq.fill(p.nHidden){ RegInit(p.L2WeightInitVal) }
   val pe = Module(new MixerLayer2PE())
 
   pe.io.in.bits.w := Ws
   pe.io.in.bits.x := io.in.bits.x
   pe.io.in.bits.bit := io.in.bits.bit
+  pe.io.in.bits.last := io.in.bits.last
   pe.io.in.bits.reload := peReload
   pe.io.in.valid := peInValid
 
   Ws zip pe.io.dw foreach {case (a, b) =>
-    when(weightUpdate) {
-      a := a + b
+    when(weightReset) {
+      a := p.L2WeightInitVal
+    }.elsewhen(weightUpdate) {
+      a := WeightAdd(a, b)
     }
   }
 
   // ctrl singal gen
-  val sLossAcc :: sWait :: sUpdate :: Nil = Enum(3)
+  val sLossAcc :: sWait :: sUpdate :: sRest :: Nil = Enum(4)
   val state = RegInit(sLossAcc)
   val cntInc = WireInit(false.B)
   val cntRst = WireInit(false.B)
@@ -123,7 +155,9 @@ class MixerLayer2(implicit p: MixerParameter) extends Module {
       inReady := true.B
       cntInc := io.in.fire
 
-      when(cntWrp) {
+      when(io.in.fire && io.in.bits.last) {
+        state := sRest
+      }.elsewhen(cntWrp) {
         state := sWait
       }
     }
@@ -142,8 +176,17 @@ class MixerLayer2(implicit p: MixerParameter) extends Module {
 
       state := sLossAcc
     }
+
+    is(sRest) {
+      cntRst := true.B
+      weightReset := true.B
+
+      state := sLossAcc
+    }
   }
 
   io.in.ready := inReady
   io.out := pe.io.out
+
+  val latency = pe.latency
 }

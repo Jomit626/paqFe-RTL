@@ -9,7 +9,7 @@ import org.scalatest.matchers.should.Matchers
 
 import paqFe.types._
 
-class SpecClass
+abstract class SpecClass
   extends AnyFlatSpec
   with ChiselScalatestTester
   with Matchers {

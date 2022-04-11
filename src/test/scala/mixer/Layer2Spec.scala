@@ -88,6 +88,7 @@ implicit class Layer2TestDUT(c: MixerLayer2TestModule)(implicit p: MixerParamete
 
             c.io.in(idx).enqueue(bd.Lit(
               _.bit -> bit.U,
+              _.last -> (i == n - 1).B,
               _.x -> Vec.Lit(x.map(_.S(p.XWidth)):_*)
             ))
           }
@@ -107,7 +108,7 @@ implicit class Layer2TestDUT(c: MixerLayer2TestModule)(implicit p: MixerParamete
             c.io.out(idx).expectDequeue(bd.Lit(
               _.bit -> bit.U,
               _.prob -> prob.U,
-              _.last -> false.B
+              _.last -> (i == n - 1).B,
             ))
           }
         }

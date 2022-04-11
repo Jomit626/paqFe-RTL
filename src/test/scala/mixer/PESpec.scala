@@ -134,7 +134,7 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
         val wEnd = wStart + nFeatures
         val bitIdx = nFeatures * 2
         val bd = new VecDotPackBundle()
-        for(line <- data) {
+        for((line, i) <- data.zipWithIndex) {
           val x = line.slice(xStart, xEnd)
           val w = line.slice(wStart, wEnd)
           val bit = line(bitIdx)
@@ -142,6 +142,7 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
             _.w -> Vec.Lit(w.map(_.S(p.WeightWidth)):_*),
             _.x -> Vec.Lit(x.map(_.S(p.XWidth)):_*),
             _.bit -> bit.U,
+            _.last -> (last && i == data.length - 1).B
           ))
         }
       }.fork {
@@ -149,10 +150,14 @@ implicit class PredictPEDUT(c : PredictPE)(implicit p : MixerParameter) {
         val bIdx = nFeatures * 2
         val xIdx = nFeatures * 2 + 1
         val db = XBitBundle()
-        for(line <- data) {
+        for((line, i) <- data.zipWithIndex) {
           val bit = line(bIdx)
           val x = line(xIdx)
-          c.io.x.expectDequeue(db.Lit(_.bit -> bit.U, _.x -> x.S))
+          c.io.x.expectDequeue(db.Lit(
+            _.bit -> bit.U,
+            _.x -> x.S,
+            _.last -> (last && i == data.length - 1).B
+          ))
         }
       }.fork {
         // expect update stream

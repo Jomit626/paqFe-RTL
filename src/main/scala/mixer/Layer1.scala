@@ -70,13 +70,14 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
   when(ramInit.io.status.initDone) {
     weightRam.write(writeAddr, writeData, writeEn)
   }.otherwise {
-    weightRam.write(ramInit.io.waddr, VecInit.fill(p.nFeatures)(p.L1WeightInitVal.S) , Seq.fill(p.nFeatures) {ramInit.io.wen})
+    weightRam.write(ramInit.io.waddr, VecInit.fill(p.nFeatures)(p.L1WeightInitVal) , Seq.fill(p.nFeatures) {ramInit.io.wen})
   }
 
   val pe = Module(new PredictUpdateEngine())
   pe.io.in.bits.w := weightRam.read(io.in.bits.ctx)
   pe.io.in.bits.x := io.in.bits.x
   pe.io.in.bits.bit := io.in.bits.bit
+  pe.io.in.bits.last := io.in.bits.last
 
   // from DotProduct PE to weightRam
   for(j <- 0 until p.VecScaleSubRound) {
@@ -93,36 +94,36 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
   val shiftInFlightCtxs = Seq.fill(n) {Reg(UInt(8.W))}
   val shiftInFlightValid = Seq.fill(n) {RegInit(false.B)}
   val shiftInFlightCtxsDeq = WireInit(false.B)
-
-  for(i <- 0 until n) {
-    val loadPrev = if(i != 0 ) (!shiftInFlightValid(i) && shiftInFlightValid(i - 1)) else false.B
-    val feedNext = if(i != n - 1) (shiftInFlightValid(i) && !shiftInFlightValid(i + 1)) else false.B
-
-    if(i == 0) {
-      when(io.in.fire) {
-        shiftInFlightCtxs.head := io.in.bits.ctx
-        shiftInFlightValid.head := true.B
-      }
+  val feedNext = Seq.tabulate(n) {i => 
+    if(i != n - 1) {
+      shiftInFlightValid(i) && (~shiftInFlightValid.slice(i, n).reduce(_ & _) || shiftInFlightCtxsDeq)
     } else {
-      when(loadPrev) {
-        shiftInFlightCtxs(i) := shiftInFlightCtxs(i - 1)
-      }
+      shiftInFlightCtxsDeq
+    }
+  }
+  val loadPrev = Seq.tabulate(n) {i => 
+    if(i != 0) {
+      feedNext(i - 1)
+    } else {
+      io.in.fire
+    }
+  }
+  for(i <- 0 until n) {
+    when(loadPrev(i)) {
+      shiftInFlightCtxs(i) := (if (i == 0) io.in.bits.ctx else shiftInFlightCtxs(i - 1))
     }
 
-    when(loadPrev && feedNext) {
+    when(loadPrev(i) && feedNext(i)) {
       shiftInFlightValid(i) := true.B
-    }.elsewhen(loadPrev) {
+    }.elsewhen(loadPrev(i)) {
       shiftInFlightValid(i) := true.B
-    }.elsewhen(feedNext) {
+    }.elsewhen(feedNext(i)) {
       shiftInFlightValid(i) := false.B
     }
-
-
   }
 
   when(shiftInFlightCtxsDeq) {
     assert(shiftInFlightValid.last)
-    shiftInFlightValid.last := false.B
   }
 
   val harzard = Seq.tabulate(n) {i => 
@@ -154,6 +155,8 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
 
   io.x := pe.io.x
   io.status := ramInit.io.status
+
+  val latency = pe.latency
 }
 
 class MixerLayer1(implicit p: MixerParameter) extends Module {
@@ -180,4 +183,6 @@ class MixerLayer1(implicit p: MixerParameter) extends Module {
   io.in.ready := allReady
 
   io.status := StatusMerge(pes.map(_.io.status))
+  
+  val latency = pes.last.latency
 }

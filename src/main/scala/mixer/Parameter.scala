@@ -7,14 +7,14 @@ class MixerParameter(val nFeatures: Int = 75,  val nHidden: Int = 8) {
   val XWidth = 12.W
   val lossWidth = 18.W
 
-  val VecDotMACNum = 8
+  val VecDotMACNum = 2
   val VecDotII = (nFeatures + VecDotMACNum - 1) / VecDotMACNum
   
   val VecScaleSubMSNum = VecDotMACNum
   val VecScaleSubRound = VecDotII
   
-  val L1WeightInitVal = (1 << 16) / nFeatures
-  val L2WeightInitVal = (1 << 16) / nHidden
+  def L1WeightInitVal = ((1 << 16) / nFeatures - 1).S(WeightWidth)
+  def L2WeightInitVal = ((1 << 16) / nHidden - 1).S(WeightWidth)
 
   val L2BatchSize = 1024
 }

@@ -1,26 +1,17 @@
 package paqFe.mixer
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental.BundleLiterals._
+import chisel3.experimental.VecLiterals._
 
 import chiseltest._
+import chiseltest.simulator.SimulatorDebugAnnotation
 
-import org.scalatest._
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
-
+import paqFe._
 import paqFe.verifydata._
 import paqFe.types._
 
-import java.io._
-import com.github.tototoshi.csv._
-import chisel3.experimental.VecLiterals._
-
-import paqFe._
-
 import Layer1Helpers._
-import chisel3.experimental.VecLiterals
 
 class MixerLayer1Spec extends SpecClass {
   behavior of "Mixer Layer 1"
@@ -84,15 +75,16 @@ implicit class Layer1TestDUT(c: MixerLayer1)(implicit p: MixerParameter) {
       }
 
       // expect bit X
-      for(idx <- 0 until 8) {
+      for(idx <- 0 until p.nHidden) {
         forkList = forkList.fork {
           val bd = new XBitBundle
-          for(line <- data) {
+          for((line, i) <- data.zipWithIndex) {
             val bit = line(bitIdx)
             val x = line(outXStart + idx)
             c.io.out(idx).expectDequeue(bd.Lit(
               _.bit -> bit.U,
-              _.x -> x.S
+              _.x -> x.S,
+              _.last -> (last && i == data.length - 1).B
             ))
           }
         }

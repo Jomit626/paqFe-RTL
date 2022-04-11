@@ -8,6 +8,7 @@ import paqFe.types._
 class VecDotPackBundle(implicit p : MixerParameter) extends Bundle {
   val x = Vec(p.nFeatures, SInt(p.XWidth))
   val w = Vec(p.nFeatures, SInt(p.WeightWidth))
+  val last = Bool()
   val bit = UInt(1.W)
 }
 
@@ -33,6 +34,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
 
   // data path
   val bit0 = RegEnable(io.in.bits.bit, load)
+  val last0 = RegEnable(io.in.bits.last, load)
   // Registers to store input W and X
   val WReg = Reg(Vec(p.nFeatures, SInt(p.WeightWidth)))
   val XReg = Reg(Vec(p.nFeatures, SInt(p.XWidth)))
@@ -82,6 +84,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   val prob = ShiftRegister(Squash(probStrech), SquashLatency)
   val x = ShiftRegister(probStrech, SquashLatency)
   val bit = ShiftRegister(bit0, macs.last.latency + SquashLatency, macCE)
+  val last = ShiftRegister(last0, macs.last.latency + SquashLatency, macCE)
 
   // Ctrl singls gen
   val cntCE = Wire(Bool())
@@ -125,11 +128,12 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
 
   io.P.bits.bit := bit
   io.P.bits.prob := prob
-  io.P.bits.last := false.B //DontCare
+  io.P.bits.last := last
   io.P.valid := output
 
   io.x.bits.x := x
   io.x.bits.bit := bit
+  io.x.bits.last := last
   io.x.valid := output
 
   for(i <- 0 until p.VecDotMACNum) {
