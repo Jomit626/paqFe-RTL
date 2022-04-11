@@ -12,7 +12,7 @@ class CoderAribiter extends Module {
     val out = DecoupledIO(new ByteIdxBundle())
   })
 
-  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 128)))
+  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 4096)))
   val arb = Module(new RRArbiter(new ByteBundle(), 8))
 
   (0 until 8).map{ i =>
@@ -125,6 +125,28 @@ class CompressrorNoCDCWrapped extends RawModule {
   }
 }
 
+class DecoupledRegSlice[T <: Data](gen: T) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(DecoupledIO(gen))
+    val out = DecoupledIO(gen)
+  })
+  val outValid = RegEnable(io.in.valid, false.B, io.in.ready)
+  val inReady = io.out.ready || ~outValid
+  val bits = RegEnable(io.in.bits, io.in.fire)
+
+  io.in.ready := inReady
+  io.out.bits := bits
+  io.out.valid := outValid
+}
+
+object DecoupledRegSlice {
+  def apply[T <: Data](in: DecoupledIO[T]) = {
+    val m = Module(new DecoupledRegSlice(chiselTypeOf(in.bits)))
+    m.io.in <> in
+    m.io.out
+  }
+}
+
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
   val model_rst = IO(Input(Bool()))
@@ -165,9 +187,7 @@ class Compressor extends RawModule {
     val modelOut = Model2CoderCrossing(order.io.out, model_clk, model_rst, coder_clk, coder_rst)
     
     (0 until 8).map{ i =>
-      coders(i).io.in.bits := RegNext(modelOut(i).bits)
-      coders(i).io.in.valid := RegNext(modelOut(i).valid, false.B)
-      modelOut(i).ready := true.B
+      DecoupledRegSlice(modelOut(i)) <> coders(i).io.in
     }
   }
 }
