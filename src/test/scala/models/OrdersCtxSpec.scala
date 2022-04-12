@@ -125,10 +125,11 @@ implicit class OrdersCtxDUT(c: OrdersContextTest) {
     for((line, i) <- data.zipWithIndex) {
       val nibble = line(0)
       val ctx = line(idx)
-
+      val chk = line(idx + 4)
       out.expectDequeue(bd.Lit(
         _.context -> ctx.U,
         _.nibble -> nibble.U,
+        _.chk -> chk.U,
         _.last -> (i >= data.length - 2).B
       ))
       if(throttle) {

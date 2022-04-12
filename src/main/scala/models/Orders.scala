@@ -58,43 +58,6 @@ class Byte2Nibble(n : Int) extends Module {
   }
 }
 
-class Order1Context extends Module {
-  val io = IO(new Bundle{
-    val in = Flipped(DecoupledIO(new NibbleBundle()))
-    val out = DecoupledIO(new NibbleCtxBundle(12))
-  })
-
-  val outValid = RegEnable(io.in.valid, false.B, io.in.ready)
-  val inReady = io.out.ready || ~outValid
-
-  // datapath
-  val ctx = RegInit(0.U(12.W))
-  val ctxNxt = RegInit(0.U(12.W))
-  val nibble = Reg(UInt(4.W))
-  val last = RegInit(false.B)
-  val last_d = RegInit(false.B)
-
-  when(io.in.fire) {
-    ctx := ctxNxt
-    ctxNxt := Cat(ctxNxt(7, 0), io.in.bits.nibble)
-    nibble := io.in.bits.nibble
-    last := io.in.bits.last
-    last_d := last
-  }
-
-  when(io.out.fire && io.out.bits.last && last_d) {
-    ctx := 0.U
-    ctxNxt := 0.U
-  }
-
-  io.in.ready := inReady
-
-  io.out.bits.context := ctx
-  io.out.bits.nibble := nibble
-  io.out.bits.last := last
-  io.out.valid := outValid
-}
-
 class OrdersContext extends Module {
   val io = IO(new Bundle{
     val in = Flipped(DecoupledIO(new NibbleBundle()))
@@ -165,73 +128,68 @@ class OrdersContext extends Module {
   io.in.ready := allReady
 
   io.o1Out.bits.context := Mux(nFirst, h1, 0.U)
+  io.o1Out.bits.chk := C1(7,0)
   io.o1Out.bits.last := last
   io.o1Out.bits.nibble := nibble
   io.o1Out.valid := outValid & allReady
 
   io.o2Out.bits.context := Mux(nFirst, h2, 0.U)
+  io.o2Out.bits.chk := C2(7,0)
   io.o2Out.bits.last := last
   io.o2Out.bits.nibble := nibble
   io.o2Out.valid := outValid & allReady
 
   io.o3Out.bits.context := Mux(nFirst, h3, 0.U)
+  io.o3Out.bits.chk := C3(7,0)
   io.o3Out.bits.last := last
   io.o3Out.bits.nibble := nibble
   io.o3Out.valid := outValid & allReady
 
   io.o4Out.bits.context := Mux(nFirst, h4, 0.U)
+  io.o4Out.bits.chk := C4(7,0)
   io.o4Out.bits.last := last
   io.o4Out.bits.nibble := nibble
   io.o4Out.valid := outValid & allReady
 }
 
-object ContextMap2Model {
-  def apply(in : Valid[Vec[BitProbBundle]] ) = {
-    require(in.bits.length == 4)
-    val out = Wire(Vec(8, Valid(new BitProbBundle())))
-
-    // used to force set first prob to 2048
-    val first = RegInit(true.B)
-    when(first && out(0).valid) {
-      first := false.B
-    }
-    when(~first && out(4).valid && out(4).bits.last) {
-      first := true.B
-    }
-
-    val outSel = RegInit(false.B)
-    when(in.valid) {
-      outSel := ~outSel
-    }
-    
-    (0 until 4).map(i =>  {
-      out(i).bits := in.bits(i)
-      out(i).valid := in.valid && ~outSel
-      out(i + 4).bits := in.bits(i)
-      out(i + 4).valid := in.valid && outSel
-
-      if(i == 0)
-        out(i).bits.prob := Mux(first, 2048.U, in.bits(i).prob)
-    })
-
-    out
-  }
-}
-
-class Order1 extends Module {
+class Orders extends Module {
   val io = IO(new Bundle{
     val in = Flipped(DecoupledIO(new NibbleBundle()))
-    val out = Vec(8, DecoupledIO(new BitProbBundle()))
+
+    val outProb = Vec(4, Vec(8, DecoupledIO(new BitProbBundle())))
+    val outCtx = Vec(8, DecoupledIO(UInt(3.W)))
 
     val status = new StatusBundle
   })
 
-  val contextGen = Module(new Order1Context()).io
-  val contextMap = Module(new ContextMap(12)).io
+  val contextGen = Module(new OrdersContext())
+  
+  val o1CtxMap = Module(new ContextMap(12))
+  val o2CtxMap = Module(new ContextMap(16))
+  val o3CtxMap = Module(new ContextMap(16))
+  val o4CtxMap = Module(new ContextMap(17))
+  val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap)
 
-  contextGen.in <> io.in
-  contextMap.in <> contextGen.out
-  (0 until 8).map(i => io.out(i) <> contextMap.out(i))
+  val convter = Module(new ContextMap2Model(4))
 
-  io.status := contextMap.status
+  io.in <> contextGen.io.in
+  o1CtxMap.io.in <> contextGen.io.o1Out
+  o2CtxMap.io.in <> contextGen.io.o2Out
+  o3CtxMap.io.in <> contextGen.io.o3Out
+  o4CtxMap.io.in <> contextGen.io.o4Out
+
+  convter.io.in(0) <> o1CtxMap.io.out
+  convter.io.in(1) <> o2CtxMap.io.out
+  convter.io.in(2) <> o3CtxMap.io.out
+  convter.io.in(3) <> o4CtxMap.io.out
+
+  convter.io.inHit(0) <> o1CtxMap.io.outHit
+  convter.io.inHit(1) <> o2CtxMap.io.outHit
+  convter.io.inHit(2) <> o3CtxMap.io.outHit
+  convter.io.inHit(3) <> o4CtxMap.io.outHit
+
+  io.outProb <> convter.io.out
+  io.outCtx <> convter.io.outCtx
+  
+  io.status := RegNext(StatusMerge(contextMaps.map(_.io.status)))
 }

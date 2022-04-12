@@ -10,12 +10,9 @@ import chiseltest._
 
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
 import scala.util.Random
 import verifydata._
 import types._
-
-import LocalHelpers._
 
 class CoderAribiterSpec extends AnyFlatSpec
   with ChiselScalatestTester {
@@ -76,51 +73,7 @@ class CoderAribiterSpec extends AnyFlatSpec
     }
   }
 }
-
-class CompressrorNoCDCSpec extends AnyFlatSpec
-  with ChiselScalatestTester {
-  behavior of "Compressror with out CDC"
-
-  val db = new VerifyData("./paqFe/verify/db/all")
-  for(line <- db.data) {
-    val test_name = line(0)
-    val input_file = line(1)
-    val output_file = line(2)
-
-    it should "match software model with data: " + test_name in {
-      test(new CompressrorNoCDC)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        dutTestInit(c)
-        statusWaitInitDone(c.clock, c.io.status)
-        dutTest(c, input_file, output_file)
-      } 
-    }
-    it should "tolerate throttling with data: " + test_name in {
-      test(new CompressrorNoCDC)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        dutTestInit(c)
-        statusWaitInitDone(c.clock, c.io.status)
-        dutTest(c, input_file, output_file, true)
-      } 
-    }
-  }
-
-  it should "take multiple streams without reset between and output currect data" in {
-      test(new CompressrorNoCDC)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        dutTestInit(c)
-        for(line <- db.data) {
-          val test_name = line(0)
-          val input_file = line(1)
-          val output_file = line(2)
-
-          statusWaitInitDone(c.clock, c.io.status)
-          dutTest(c, input_file, output_file)
-        }
-      } 
-    }
-}
-
+/*
 class CompressrorSpec extends AnyFlatSpec
   with ChiselScalatestTester {
   behavior of "Compressror"
@@ -238,54 +191,5 @@ implicit class CompressorTestDUT(c: CompressorTest) {
       assert(oss(i).end())
   }
 }
-  def dutTestInit(c : CompressrorNoCDC) = {
-    c.io.in.initSource()
-    c.io.in.setSourceClock(c.clock)
-
-    c.io.out.initSink()
-    c.io.out.setSinkClock(c.clock)
-  }
-
-  def dutTest(c : CompressrorNoCDC, input_file : String, output_file : String, randomThrottle: Boolean = false) = {
-    val is = new ByteStream(input_file)
-    val oss = (0 until 8).map(i => new ByteStream(output_file + s".$i"))
-
-    fork {
-      val bd = new ByteBundle()
-      var flag = true
-      while(flag) {
-        val (byte, last) = is.getByte()
-        c.io.in.enqueue(bd.Lit(_.byte -> (byte & 0xFF).U, _.last -> last.B))
-        
-        flag = !last
-      }
-    }.fork {
-      var last = false
-      c.io.out.ready.poke(true.B)
-      while(!last) {
-        var valid = c.io.out.valid.peek().litToBoolean
-        while(!valid) {
-          c.clock.step()
-          valid = c.io.out.valid.peek().litToBoolean
-        }
-
-        val idx = c.io.out.bits.idx.peek().litValue.toInt
-        val (byte, streamEnd) = oss(idx).getByte()
-
-        last = c.io.out.bits.last.peek().litToBoolean
-        c.io.out.bits.byte.expect((byte & 0xFF).U)
-
-        c.clock.step()
-        if(randomThrottle) {
-          c.io.out.ready.poke(false.B)
-          val t = Random.between(0, 128)
-          c.clock.step((t - 32) max 0)
-          c.io.out.ready.poke(true.B)
-        }
-      }
-    }.join()
-
-    for(i <- 0 until 8)
-      assert(oss(i).end())
-  }
 }
+*/

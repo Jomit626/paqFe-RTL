@@ -32,6 +32,7 @@ class CtxBundle(CtxWidth : Int) extends Bundle {
 class NibbleCtxBundle(CtxWidth : Int) extends Bundle {
   val nibble = Output(UInt(4.W))
   val context = Output(UInt(CtxWidth.W))
+  val chk = Output(UInt(8.W))
   val last = Output(Bool())
 }
 

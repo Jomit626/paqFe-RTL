@@ -6,7 +6,6 @@ import chisel3.util._
 import paqFe.types._
 import paqFe.ram._
 import paqFe.coder.ArithCoder
-import paqFe.models.{Order1, Byte2Nibble}
 import paqFe.models.ContextMapLarge
 import paqFe.mixer._
 
@@ -63,72 +62,6 @@ object Model2CoderCrossing {
   }
 }
 
-class CompressrorNoCDC extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(new ByteBundle()))
-    val out = DecoupledIO(new ByteIdxBundle())
-
-    val status = new StatusBundle
-  })
-
-  val byte2nibble = Module(new Byte2Nibble(1))
-  val order1 = Module(new Order1())
-  val coders = Seq.fill(8) {Module(new ArithCoder())}
-  val arib = Module(new CoderAribiter)
-
-  byte2nibble.io.in <> io.in
-
-  order1.io.in <> byte2nibble.io.out(0)
-
-  (0 until 8).map{ i =>
-    coders(i).io.in  <> order1.io.out(i)
-    arib.io.in(i) <> coders(i).io.out
-  }
-
-  io.out <> arib.io.out
-
-  io.status := order1.io.status
-}
-
-class CompressrorNoCDCWrapped extends RawModule {
-  val ACLK = IO(Input(Clock()))
-  val ARESTN = IO(Input(Bool()))
-  val S_AXIS = IO(new Bundle {
-    val TDATA = Input(UInt(8.W))
-    val TKEEP = Input(UInt(1.W))
-    val TLAST = Input(Bool())
-    val TREADY = Output(Bool())
-    val TVALID = Input(Bool())
-  })
-
-  val M_AXIS = IO(new Bundle {
-    val TDATA = Output(UInt(16.W))
-    val TKEEP = Output(UInt(2.W))
-    val TLAST = Output(Bool())
-    val TREADY = Input(Bool())
-    val TVALID = Output(Bool())
-  })
-  withClockAndReset(ACLK, ~ARESTN) {
-    val packetOutput = Module(new PacketOutput)
-    val inst = Module(new CompressrorNoCDC)
-    
-    inst.io.in.bits.byte := S_AXIS.TDATA
-    inst.io.in.bits.last := S_AXIS.TLAST
-    inst.io.in.valid := S_AXIS.TVALID & inst.io.status.initDone
-    S_AXIS.TREADY := inst.io.in.ready & inst.io.status.initDone
-
-    packetOutput.io.in.bits := inst.io.out.bits
-    packetOutput.io.in.valid := inst.io.out.valid
-    inst.io.out.ready := packetOutput.io.in.ready
-
-    M_AXIS.TDATA := packetOutput.io.out.bits.data
-    M_AXIS.TLAST := packetOutput.io.out.bits.last
-    M_AXIS.TKEEP := "b11".U
-    M_AXIS.TVALID := packetOutput.io.out.valid
-    packetOutput.io.out.ready := M_AXIS.TREADY
-  }
-}
-
 class DecoupledRegSlice[T <: Data](gen: T) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(gen))
@@ -150,13 +83,16 @@ object DecoupledRegSlice {
     m.io.out
   }
 }
-
+/*
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
   val model_rst = IO(Input(Bool()))
 
   val model_in = IO(Flipped(DecoupledIO(new ByteBundle())))
   val model_status = IO(new StatusBundle)
+
+  val mixer_clk = IO(Input(Clock()))
+  val mixer_rst = IO(Input(Bool()))
 
   val coder_clk = IO(Input(Clock()))
   val coder_rst = IO(Input(Bool()))
@@ -244,19 +180,16 @@ class CompressrorWrapped extends RawModule {
   M_AXIS.TVALID := packetOutput.io.out.valid
   packetOutput.io.out.ready := M_AXIS.TREADY
 }
-
+*/
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
-  (new ChiselStage).emitVerilog(new Compressor)
-  (new ChiselStage).emitVerilog(new AsyncQueue(UInt(9.W), 128))
-  (new ChiselStage).emitVerilog(new CompressrorWrapped)
-  (new ChiselStage).emitVerilog(new CompressrorNoCDCWrapped)
-  
+
 }
 
 import  models.ContextMap
 import paqFe.mixer.Mixer
+import paqFe.models._
 object GetTestVerilog extends App {
   implicit val p = new MixerParameter()
-  (new ChiselStage).emitVerilog(new Mixer)
+  (new ChiselStage).emitVerilog(new Orders)
 }
