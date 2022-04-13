@@ -170,7 +170,7 @@ class Orders extends Module {
   val o4CtxMap = Module(new ContextMap(17))
   val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap)
 
-  val convter = Module(new ContextMap2Model(4))
+  val convter = Module(new ContextMapsToModel(4))
 
   io.in <> contextGen.io.in
   o1CtxMap.io.in <> contextGen.io.o1Out
@@ -182,11 +182,6 @@ class Orders extends Module {
   convter.io.in(1) <> o2CtxMap.io.out
   convter.io.in(2) <> o3CtxMap.io.out
   convter.io.in(3) <> o4CtxMap.io.out
-
-  convter.io.inHit(0) <> o1CtxMap.io.outHit
-  convter.io.inHit(1) <> o2CtxMap.io.outHit
-  convter.io.inHit(2) <> o3CtxMap.io.outHit
-  convter.io.inHit(3) <> o4CtxMap.io.outHit
 
   io.outProb <> convter.io.out
   io.outCtx <> convter.io.outCtx

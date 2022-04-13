@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 
 import paqFe.types._
-import paqFe.ram.RamInitUnit
+import paqFe.util.RamInitUnit
 
 class PredictUpdateEngine(forceFirstProbEven: Boolean = false)(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {

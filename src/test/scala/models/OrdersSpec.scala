@@ -46,12 +46,12 @@ class OrdersSpec extends SpecClass {
     
     it should s"match software model with data: $data_name" in {
       test(new OrdersTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation, SimulatorDebugAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
         c.init()
         c.test(input_file, output_file)
       }
     }
-    /*
+    
     it should s"tolerate throttling with data: $data_name" in {
       test(new OrdersTest())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -59,9 +59,8 @@ class OrdersSpec extends SpecClass {
         c.test(input_file, output_file, true)
       }
     }
-    */
   }
-  /*
+  
   it should "take multiple streams without reset between and output currect data" in {
     test(new OrdersTest())
     .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
@@ -73,10 +72,10 @@ class OrdersSpec extends SpecClass {
         val output_file = line(2)
         
         c.test(input_file, output_file)
+        c.waitInitDone()
       }
     }
   }
-  */
 }
 
 object OrdersHelpers {
@@ -129,6 +128,10 @@ implicit class OrdersDUT(c: OrdersTest) {
                 _.prob -> p.U,
                 _.last -> (j == data.length/8-1).B
               ))
+              
+              if(throttle) {
+                c.clock.step(Random.between(0, 32))
+              }
             }
           }
         }
@@ -138,7 +141,11 @@ implicit class OrdersDUT(c: OrdersTest) {
             val line = data(j * 8 + idx)
             val ctx = line.last
             c.io.outCtx(idx).expectDequeue(ctx.U)
+            if(throttle) {
+              c.clock.step(Random.between(0, 32))
+            }
           }
+
         }
       }
       processs.join()

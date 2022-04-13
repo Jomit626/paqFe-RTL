@@ -6,7 +6,6 @@ import chisel3.util._
 import paqFe.types._
 import paqFe.ram._
 import paqFe.coder.ArithCoder
-import paqFe.models.ContextMapLarge
 import paqFe.mixer._
 
 class CoderAribiter extends Module {
@@ -62,27 +61,6 @@ object Model2CoderCrossing {
   }
 }
 
-class DecoupledRegSlice[T <: Data](gen: T) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(gen))
-    val out = DecoupledIO(gen)
-  })
-  val outValid = RegEnable(io.in.valid, false.B, io.in.ready)
-  val inReady = io.out.ready || ~outValid
-  val bits = RegEnable(io.in.bits, io.in.fire)
-
-  io.in.ready := inReady
-  io.out.bits := bits
-  io.out.valid := outValid
-}
-
-object DecoupledRegSlice {
-  def apply[T <: Data](in: DecoupledIO[T]) = {
-    val m = Module(new DecoupledRegSlice(chiselTypeOf(in.bits)))
-    m.io.in <> in
-    m.io.out
-  }
-}
 /*
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
@@ -189,7 +167,8 @@ object GetCompressorVerilog extends App {
 import  models.ContextMap
 import paqFe.mixer.Mixer
 import paqFe.models._
+import paqFe.util._
 object GetTestVerilog extends App {
   implicit val p = new MixerParameter()
-  (new ChiselStage).emitVerilog(new Orders)
+  (new ChiselStage).emitVerilog(new TDPRamWriteFirst(UInt(8.W), 12))
 }

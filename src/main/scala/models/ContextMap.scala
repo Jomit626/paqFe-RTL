@@ -3,7 +3,7 @@ package paqFe.models
 import chisel3._
 import chisel3.util._
 
-import paqFe.ram._
+import paqFe.util._
 import paqFe.state.StateShiftLut
 import paqFe.state.StaticStateMap
 
@@ -11,18 +11,19 @@ import paqFe.types._
 
 
 class ContextMapOutputBundle extends Bundle {
-  val bit = UInt(1.W)
-  val prob = UInt(12.W)
+  val bits = Vec(4, UInt(1.W))
+  val probs = Vec(4, UInt(12.W))
+
+  val states = Vec(4, UInt(8.W)) // for CAS
+
   val hit = Bool()
   val last = Bool()
 }
 
 class ContextMap(CtxWidth : Int) extends Module {
-
   val io = IO(new Bundle{
     val in = Flipped(DecoupledIO(new NibbleCtxBundle(CtxWidth)))
-    val out = DecoupledIO(Vec(4, new BitProbBundle()))
-    val outHit = DecoupledIO(Bool())
+    val out = DecoupledIO(new ContextMapOutputBundle())
 
     val status = new StatusBundle
   })
@@ -52,24 +53,24 @@ class ContextMap(CtxWidth : Int) extends Module {
   val harzared2_d = RegEnable(harzared2, false.B, pipelineReady)
 
   // duel port, A write first, B read only
-  val ram = Module(new ByteWriteTDPRam(16, CtxWidth))
+  val ram = Module(new TDPRamWriteFirst(Vec(16, UInt(8.W)), CtxWidth))
   val ramInit = Module(new RamInitUnit(CtxWidth))
 
   ram.io.enb := io.in.valid && pipelineReady
+  ram.io.web := false.B
+  ram.io.dinb := DontCare
   ram.io.addrb := context
 
   ramInit.io.in.bits := last_dd & last_d
   ramInit.io.in.valid := valid_dd && pipelineReady
 
-  val dout = Reg(UInt((8 * 16).W))
+  val dout = Reg(Vec(16, UInt(8.W)))
   
-  val line_split = (0 until 16).map(i => dout(8*i+7,8*i))
-  
-  val checksum = line_split(0)
+  val checksum = dout(0)
   val checksumNxt = chk_dd
   val hit = checksum === checksumNxt
 
-  val lineBytes = (0 until 16).map(i => Mux(hit, dout(8*i+7,8*i), 0.U))
+  val lineBytes = VecInit.tabulate(16) {i => Mux(hit, dout(i), 0.U)}
 
   val state0 = lineBytes(1)
   val state0Nxt = StateShiftLut(state0, nibble_dd(3))
@@ -90,40 +91,45 @@ class ContextMap(CtxWidth : Int) extends Module {
   val state3Nxt = StateShiftLut(state3, nibble_dd(0))
 
   val dinBytes = Seq(checksumNxt) ++ Seq(state0Nxt) ++ Seq.fill(2){state1Nxt} ++ Seq.fill(4){state2Nxt} ++ Seq.fill(8){state3Nxt}
-  val wen = Cat(Seq(state3OH,state2OH,state1OH,1.U(1.W),1.U(1.W)))
+  val update = Cat(Seq(state3OH,state2OH,state1OH,1.U(1.W),1.U(1.W)))
 
-  val lineNxt = (0 until 16).map(i => Mux(wen(i), dinBytes(i), lineBytes(i)))
+  val lineNxt =  VecInit.tabulate(16) {i => Mux(update(i), dinBytes(i), lineBytes(i))}
 
-  ram.io.ena := (valid_dd & pipelineReady) | ramInit.io.wen
-  ram.io.wea := wen  | Cat(Seq.fill(wen.getWidth){~hit && valid_dd}) | Cat(Seq.fill(wen.getWidth){ramInit.io.wen})
+  ram.io.ena := (valid_dd & pipelineReady) || ramInit.io.wen
+  ram.io.wea := valid_dd || ramInit.io.wen
   ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
-  ram.io.dina := Mux(ramInit.io.status.initDone, Cat(lineNxt.reverse), 0.U)
+  ram.io.dina := Mux(ramInit.io.status.initDone,lineNxt, 0.U.asTypeOf(ram.io.dina))
   
-  pipelineReady := io.out.ready && io.outHit.ready
+  pipelineReady := io.out.ready
 
   when(pipelineReady) {
     when(harzared1) {
-      dout := Cat(lineNxt.reverse)
+      dout := lineNxt
     }.elsewhen(harzared2_d) {
       dout := ram.io.doa
     }.otherwise{
       dout := ram.io.dob
     }
   }
+  val states = VecInit(Seq(state0, state1, state2, state3))
+  val probs = VecInit(states.map(StaticStateMap(_)))
 
-  val probs = Seq(state0, state1, state2, state3).map(StaticStateMap(_))
-
-  for(i <- 0 until 4) {
-    io.out.bits(i).prob := probs(i)
-    io.out.bits(i).bit := nibble_dd(3 - i)
-    io.out.bits(i).last := last_dd
-  }
-  io.outHit.bits := hit
-  io.outHit.valid := valid_dd && pipelineReady
+  io.out.bits.bits := VecInit.tabulate(4){i => nibble_dd(3 - i)}
+  io.out.bits.probs := probs
+  io.out.bits.states := states
+  io.out.bits.hit := hit
+  io.out.bits.last := last_dd
   io.out.valid := valid_dd && pipelineReady
+
 
   io.in.ready := pipelineReady
   io.status := ramInit.io.status
+}
+/*
+class ContextMapCascadeBundel extends Bundle {
+  val states = Vec(4, UInt(8.W))
+  val bits = Vec(4, UInt(1.W))
+  val last = Bool()
 }
 
 private class ContextMapCascade(CtxWidth : Int, CascadeNumber : Int, ID : Int) extends Module {
@@ -131,21 +137,23 @@ private class ContextMapCascade(CtxWidth : Int, CascadeNumber : Int, ID : Int) e
   val LocalCtxWidth = CtxWidth - LocalBits;
 
   val io = IO(new Bundle{
-    val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
-    val inCascade = Flipped(ValidIO(Vec(4, new BitProbBundle())))
+    val in = Flipped(DecoupledIO(new NibbleCtxBundle(CtxWidth)))
+    val inCascade = Flipped(DecoupledIO(new ContextMapCascadeBundel()))
 
-    val out = ValidIO(Vec(4, new BitProbBundle()))
-    val outCascade = ValidIO(new NibbleCtxBundle(CtxWidth))
+    val out = DecoupledIO(new ContextMapCascadeBundel())
+    val outCascade = DecoupledIO(new NibbleCtxBundle(CtxWidth))
 
     val status = new StatusBundle
   })
   
   val idBits = io.in.bits.context(CtxWidth - 1, CtxWidth - LocalBits)
-  val inValid = io.in.valid && idBits === ID.U
+  val localMask = idBits === ID.U
+  val inValid = io.in.valid && localMask
   val last = io.in.valid && io.in.bits.last
-  
+  // datapath
   val cm = Module(new ContextMap(LocalCtxWidth)).io
-  cm.in := io.in
+  cm.in <> io.in
+  io.in.ready 
   cm.in.valid := inValid || last
 
   if(ID == 0) {
@@ -167,8 +175,8 @@ private class ContextMapCascade(CtxWidth : Int, CascadeNumber : Int, ID : Int) e
 class ContextMapLarge(CtxWidth : Int, CascadeNumber : Int) extends Module {
 
   val io = IO(new Bundle{
-    val in = Flipped(ValidIO(new NibbleCtxBundle(CtxWidth)))
-    val out = ValidIO(Vec(4, new BitProbBundle()))
+    val in = DecoupledIO(ValidIO(new NibbleCtxBundle(CtxWidth)))
+    val out = DecoupledIO(Vec(4, new BitProbBundle()))
 
     val status = new StatusBundle
   })
@@ -186,84 +194,82 @@ class ContextMapLarge(CtxWidth : Int, CascadeNumber : Int) extends Module {
   io.out := cms.last.out
   io.status := StatusMerge(cms map (_.status))
 }
+*/
 
-class ContextMap2Model(n: Int) extends Module {
+class ContextMapsToModel(n: Int) extends Module {
   val io = IO(new Bundle {
-    val in = Vec(n, Flipped(DecoupledIO(Vec(4, new BitProbBundle))))
-    val inHit = Vec(n, Flipped(DecoupledIO(Bool())))
+    val in = Vec(n, Flipped(DecoupledIO(new ContextMapOutputBundle)))
 
     val out = Vec(n, Vec(8, DecoupledIO(new BitProbBundle())))
     val outCtx = Vec(8, DecoupledIO(UInt(log2Ceil(n + 1).W)))
   })
 
-  def ContextMap2ModelProb(in: DecoupledIO[Vec[BitProbBundle]]) = {
-    val out = Wire(Vec(8, DecoupledIO(new BitProbBundle())))
-    // used to force set first prob to 2048
-    val first = RegInit(true.B)
-    when(first && out(0).valid) {
-      first := false.B
+  // ctrl singal
+  val inReady = Wire(Bool())
+  val outValid0 = Wire(Bool())
+  val outValid1 = Wire(Bool())
+  
+  val first = RegInit(true.B)
+
+  // data path
+  val ctx = PopCount(io.in.map(_.bits.hit))
+
+  for(j <- 0 until 4) {
+    for(i <- 0 until n) {
+      io.out(i)(j).bits.bit := io.in(i).bits.bits(j)
+      io.out(i)(j).bits.prob := io.in(i).bits.probs(j)
+      io.out(i)(j).bits.last := io.in(i).bits.last
+      io.out(i)(j).valid := outValid0
+
+      io.out(i)(j + 4).bits.bit := io.in(i).bits.bits(j)
+      io.out(i)(j + 4).bits.prob := io.in(i).bits.probs(j)
+      io.out(i)(j + 4).bits.last := io.in(i).bits.last
+      io.out(i)(j + 4).valid := outValid1
+
+      if(j == 0)
+        io.out(i)(j).bits.prob := Mux(first, 2048.U, io.in(i).bits.probs(j))
     }
-    when(~first && out(4).valid && out(4).bits.last) {
-      first := true.B
+    if(j == 0) {
+      io.outCtx(j).bits :=  Mux(first, 0.U, ctx)
+    } else {
+      io.outCtx(j).bits :=  ctx
     }
+    io.outCtx(j).valid := outValid0
 
-    val outSel = RegInit(false.B)
-    when(in.fire) {
-      outSel := ~outSel
-    }
-
-    in.ready := Mux(outSel, out.slice(4, 8).map(_.ready).reduce(_ && _), out.slice(0, 4).map(_.ready).reduce(_ && _))
-
-    (0 until 4).map(i =>  {
-      out(i).bits := in.bits(i)
-      out(i).valid := in.valid &&  ~outSel && in.ready
-      out(i + 4).bits := in.bits(i)
-      out(i + 4).valid := in.valid && outSel && in.ready
-
-      if(i == 0)
-        out(i).bits.prob := Mux(first, 2048.U, in.bits(i).prob)
-    })
-
-    (out, first)
+    io.outCtx(j + 4).bits := ctx
+    io.outCtx(j + 4).valid := outValid1
   }
 
-  def ContextMap2ModelCtx(in: Vec[DecoupledIO[Bool]], first: Bool) = {
-    val out = Wire(Vec(8, DecoupledIO(UInt(log2Ceil(n + 1).W))))
-    val outHalf0 = out.slice(0, 4)
-    val outHalf1 = out.slice(4, 8)
-
-    val outSel = RegInit(false.B)
-    val ctx = PopCount(in.map(_.bits))
-
-    val inValid = in.map(_.valid).reduce(_ && _)
-    val outReady = Mux(outSel, outHalf1.map(_.ready).reduce(_ && _), outHalf0.map(_.ready).reduce(_ && _))
-
-    when(inValid && outReady) {
-      outSel := ~outSel
-    }
-
-    in.foreach(_.ready := outReady)
-    outHalf0.foreach { o =>
-      o.bits := ctx
-      o.valid := inValid && ~outSel
-    }
-    outHalf1.foreach { o =>
-      o.bits := ctx
-      o.valid := inValid && outSel
-    }
-
-    out(0).bits := Mux(first, 0.U, ctx)
-
-    out
+  for(i <- 0 until n) {
+    io.in(i).ready := inReady
   }
 
-  var first: Bool= null
-  io.in.zip(io.out).foreach{case (i,o) => 
-    val (mo, f) = ContextMap2ModelProb(i)
-    o <> mo
-
-    first = f
+  // ctral singal gen
+  when(first && io.out(0)(0).fire) {
+    first := false.B
+  }
+  when(~first && io.out(0)(4).fire && io.out(0)(4).bits.last) {
+    first := true.B
   }
 
-  io.outCtx <> ContextMap2ModelCtx(io.inHit, first)
+  val outSel = RegInit(false.B)
+  when(io.in.last.fire) {
+    outSel := ~outSel
+  }
+
+  val outHalf0 = io.out.map(_.slice(0, 4)).reduce(_ ++ _)
+  val outHalf1 = io.out.map(_.slice(4, 8)).reduce(_ ++ _)
+  val outCtxhalf0 = io.outCtx.slice(0, 4)
+  val outCtxhalf1 = io.outCtx.slice(4, 8)
+
+  val outHalf0Ready = outHalf0.map(_.ready).reduce(_ && _)
+  val outHalf1Ready = outHalf1.map(_.ready).reduce(_ && _)
+  val outCtxHalf0Ready = outCtxhalf0.map(_.ready).reduce(_ && _)
+  val outCtxHalf1Ready = outCtxhalf1.map(_.ready).reduce(_ && _)
+
+  val inValid = io.in.map(_.valid).reduce(_ && _)
+  inReady := Mux(outSel, outHalf1Ready && outCtxHalf1Ready, outHalf0Ready && outCtxHalf0Ready)
+
+  outValid0 := ~outSel && inReady && inValid
+  outValid1 := outSel && inReady && inValid
 }
