@@ -48,6 +48,18 @@ class MixerInputBundle(implicit p: MixerParameter) extends Bundle {
   val last = Bool()
 }
 
+class MixerInputXBundle(implicit p: MixerParameter) extends Bundle {
+  val x = Vec(p.nFeatures, SInt(p.XWidth))
+  val bit = UInt(1.W)
+  val last = Bool()
+}
+
+class MixerInputProbBundle(implicit p: MixerParameter) extends Bundle {
+  val probs = Vec(p.nFeatures, UInt(12.W))
+  val bit = UInt(1.W)
+  val last = Bool()
+}
+
 class MixerLayer1PE(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new Layer1InputBundle()))
@@ -58,7 +70,7 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
 
   // data path
   // to DotProduct PE
-  val weightRam = Mem(256, Vec(p.nFeatures, SInt(p.WeightWidth)))
+  val weightRam = Mem(256, Vec(p.nFeatures, SInt(p.WeightWidth))) // TODO: vivado failed to infer ram
   val writeEn = Seq.fill(p.nFeatures) {WireInit(false.B)}
   val writeAddr = Wire(UInt(8.W))
   val writeData = Wire(Vec(p.nFeatures, SInt(p.WeightWidth)))

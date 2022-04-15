@@ -42,6 +42,11 @@ class BitProbBundle extends Bundle {
   val last = Output(Bool())
 }
 
+class BitBundle extends Bundle {
+  val bit = Output(UInt(1.W))
+  val last = Output(Bool())
+}
+
 class BitProbsCtxBundle(n : Int) extends Bundle {
   val bit = UInt(1.W)
   val ctx = UInt(8.W)

@@ -6,7 +6,7 @@ import chisel3.util._
 import paqFe.ram._
 import paqFe.state.StateShiftLut
 import paqFe.state.StaticStateMap
-
+import paqFe.util._
 import paqFe.types._
 
 class Byte2Nibble(n : Int) extends Module {
@@ -183,8 +183,12 @@ class Orders extends Module {
   convter.io.in(2) <> o3CtxMap.io.out
   convter.io.in(3) <> o4CtxMap.io.out
 
-  io.outProb <> convter.io.out
-  io.outCtx <> convter.io.outCtx
+  for(j <- 0 until 8) {
+    for(i <- 0 until io.outProb.length) {
+      io.outProb(i)(j) <> DecoupledRegSlice(convter.io.out(i)(j))
+    }
+    io.outCtx(j) <> DecoupledRegSlice(convter.io.outCtx(j))
+  }
   
   io.status := RegNext(StatusMerge(contextMaps.map(_.io.status)))
 }
