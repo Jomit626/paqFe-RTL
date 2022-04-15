@@ -1,4 +1,4 @@
-package paqFe.ram
+package paqFe.util
 
 import org.scalatest._
 

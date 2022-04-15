@@ -4,7 +4,6 @@ import chisel3._
 import chisel3.util._
 
 import paqFe.types._
-import paqFe.ram._
 import paqFe.coder.ArithCoder
 import paqFe.mixer._
 import paqFe.models._

@@ -3,7 +3,6 @@ package paqFe.models
 import chisel3._
 import chisel3.util._
 
-import paqFe.ram._
 import paqFe.state.StateShiftLut
 import paqFe.state.StaticStateMap
 import paqFe.util._
@@ -185,9 +184,9 @@ class Orders extends Module {
 
   for(j <- 0 until 8) {
     for(i <- 0 until io.outProb.length) {
-      io.outProb(i)(j) <> DecoupledRegSlice(convter.io.out(i)(j))
+      io.outProb(i)(j) <> DecoupledSkidBuf(convter.io.out(i)(j))
     }
-    io.outCtx(j) <> DecoupledRegSlice(convter.io.outCtx(j))
+    io.outCtx(j) <> DecoupledSkidBuf(convter.io.outCtx(j))
   }
   
   io.status := RegNext(StatusMerge(contextMaps.map(_.io.status)))

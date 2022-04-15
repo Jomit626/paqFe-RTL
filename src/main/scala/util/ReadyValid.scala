@@ -25,53 +25,24 @@ object DecoupledHalfRegSlice {
   }
 }
 
-class DecoupledRegSlice[T <: Data](gen: T) extends Module {
+class DecoupledSkidBuf[T <: Data](gen: T) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(gen))
     val out = DecoupledIO(gen)
   })
 
-  val inReady = RegInit(true.B)
-  val outValid = RegInit(false.B)
-
-  val sEmpty :: sWorking :: sFull :: Nil = Enum(3)
-  val state = RegInit(sEmpty)
-  val stateNxt = WireInit(state)
-  state := stateNxt
-
-  inReady := stateNxt =/= sFull
-  outValid := stateNxt =/= sEmpty
-
-  switch(state) {
-    is(sEmpty) {
-      when(io.in.valid) {
-        stateNxt := sWorking
-      }
-    }
-
-    is(sWorking) {
-      when(io.in.valid && ~io.out.ready) {
-        stateNxt := sFull
-      }.elsewhen(~io.in.valid && io.out.ready) {
-        stateNxt := sEmpty
-      }
-    }
-
-    is(sFull) {
-      when(io.out.ready) {
-        stateNxt := sWorking
-      }
-    }
-  }
+  val inReady = RegNext(io.out.ready, false.B)
+  val outValid = RegEnable(io.in.valid, false.B, inReady)
+  val outBits = RegEnable(io.in.bits, inReady)
 
   io.in.ready := inReady
-  io.out.bits := RegEnable(io.in.bits, io.in.fire)
-  io.out.valid := outValid
+  io.out.bits := Mux(inReady, io.in.bits, outBits)
+  io.out.valid := Mux(inReady, io.in.valid, outValid)
 }
 
-object DecoupledRegSlice {
+object DecoupledSkidBuf {
   def apply[T <: Data](in: DecoupledIO[T]) = {
-    val m = Module(new DecoupledRegSlice(chiselTypeOf(in.bits)))
+    val m = Module(new DecoupledSkidBuf(chiselTypeOf(in.bits)))
     m.io.in <> in
 
     m.io.out

@@ -26,8 +26,8 @@ class ProbGatter(implicit p: MixerParameter) extends Module {
   }
 
   for(mixerIdx <- 0 until 8) {
-    io.out(mixerIdx) <> DecoupledRegSlice(DecoupledSimpleGatter(VecInit(io.in.map(_(mixerIdx))), mixerInputGatter))
-    io.outCtx(mixerIdx) <> DecoupledRegSlice(DecoupledSimpleGatter(VecInit(io.inCtx.map(_(mixerIdx)))))
+    io.out(mixerIdx) <> DecoupledSkidBuf(DecoupledSimpleGatter(VecInit(io.in.map(_(mixerIdx))), mixerInputGatter))
+    io.outCtx(mixerIdx) <> DecoupledSkidBuf(DecoupledSimpleGatter(VecInit(io.inCtx.map(_(mixerIdx)))))
   }
 }
 
