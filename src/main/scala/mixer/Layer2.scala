@@ -5,7 +5,7 @@ import chisel3.util._
 import paqFe.types.BitProbBundle
 import paqFe.types.TreeReduce
 
-class MixerLayer2PE(implicit p: MixerParameter) extends Module {
+class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(ValidIO(new Bundle {
       val x = Vec(p.nHidden, SInt(p.XWidth))
@@ -40,12 +40,14 @@ class MixerLayer2PE(implicit p: MixerParameter) extends Module {
   val dotLtn2048 = dot < -2048.S
   val probStrech = Wire(SInt(p.XWidth))
   probStrech := Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot))
-  val prob = RegNext(Squash(probStrech))
-  val probValid = ShiftRegister(io.in.valid, vecDotLatency + probSquashLatency)
 
-  val lossCalculationLatency = 1
+  val probValid = ShiftRegister(io.in.valid, vecDotLatency + probSquashLatency)
   val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency)
   val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency)
+  val notFirst = RegEnable(~last, false.B, probValid)
+  val prob = if(forceFirstProbEven) RegNext(Mux(notFirst, Squash(probStrech), 2048.U)) else RegNext(Squash(probStrech))
+
+  val lossCalculationLatency = 1
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
   val lr = 3.U // TODO: Learning rate
@@ -106,7 +108,7 @@ object WeightAdd {
   }
 }
 
-class MixerLayer2(implicit p: MixerParameter) extends Module {
+class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new Layer2InputBundle))
 
@@ -120,9 +122,10 @@ class MixerLayer2(implicit p: MixerParameter) extends Module {
 
   val weightUpdate = WireInit(false.B)
   val weightReset = WireInit(false.B)
+
   // data path
   val Ws = Seq.fill(p.nHidden){ RegInit(p.L2WeightInitVal) }
-  val pe = Module(new MixerLayer2PE())
+  val pe = Module(new MixerLayer2PE(forceFirstProbEven))
 
   pe.io.in.bits.w := Ws
   pe.io.in.bits.x := io.in.bits.x

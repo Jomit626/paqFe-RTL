@@ -6,7 +6,7 @@ import chisel3.util._
 import paqFe.types._
 import paqFe.util.RamInitUnit
 
-class PredictUpdateEngine(forceFirstProbEven: Boolean = false)(implicit p : MixerParameter) extends Module {
+class PredictUpdateEngine()(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new VecDotPackBundle()))
 
@@ -79,11 +79,10 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
   ramInit.io.in.bits := io.in.bits.last
   ramInit.io.in.valid := io.in.fire
 
-  when(ramInit.io.status.initDone) {
-    weightRam.write(writeAddr, writeData, writeEn)
-  }.otherwise {
-    weightRam.write(ramInit.io.waddr, VecInit.fill(p.nFeatures)(p.L1WeightInitVal) , Seq.fill(p.nFeatures) {ramInit.io.wen})
-  }
+  val wen = Seq.tabulate(p.nFeatures) {i => Mux(ramInit.io.status.initDone, writeEn(i), ramInit.io.wen)}
+  val waddr = Mux(ramInit.io.status.initDone, writeAddr, ramInit.io.waddr)
+  val wdata = Mux(ramInit.io.status.initDone, writeData, VecInit.fill(p.nFeatures)(p.L1WeightInitVal))
+  weightRam.write(waddr, wdata, wen)
 
   val pe = Module(new PredictUpdateEngine())
   pe.io.in.bits.w := weightRam.read(io.in.bits.ctx)
