@@ -184,9 +184,9 @@ class Orders extends Module {
 
   for(j <- 0 until 8) {
     for(i <- 0 until io.outProb.length) {
-      io.outProb(i)(j) <> DecoupledSkidBuf(convter.io.out(i)(j))
+      io.outProb(i)(j) <> Queue(convter.io.out(i)(j)) // TODO: comb loop
     }
-    io.outCtx(j) <> DecoupledSkidBuf(convter.io.outCtx(j))
+    io.outCtx(j) <> Queue(convter.io.outCtx(j))
   }
   
   io.status := RegNext(StatusMerge(contextMaps.map(_.io.status)))

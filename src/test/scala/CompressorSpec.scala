@@ -14,9 +14,9 @@ import scala.util.Random
 import verifydata._
 import types._
 
-class CoderAribiterSpec extends AnyFlatSpec
-  with ChiselScalatestTester {
-  
+import LocalHelpers._
+
+class CoderAribiterSpec extends SpecClass {
   behavior of "CoderAribiter"
   it should "merge 8 stream into 1 tagged with idx and set last singal currectly" in {
     test(new CoderAribiter)
@@ -55,15 +55,13 @@ class CoderAribiterSpec extends AnyFlatSpec
 
       for(i <- 0 until 8) {
         threads = threads.fork {
-          c.io.in(i).valid.poke(false.B)
+          val bd = new ByteBundle
           for(j <- 0 until 32) {
-            c.io.in(i).bits.byte.poke(j.U)
-            c.io.in(i).bits.last.poke((j == 31).B)
-            c.io.in(i).valid.poke(true.B)
-            c.clock.step()
+            c.io.in(i).enqueue(bd.Lit(
+              _.byte -> j.U,
+              _.last -> (j == 31).B
+            ))
           }
-          c.io.in(i).valid.poke(false.B)
-          c.clock.step()
         }
       }
 
@@ -73,9 +71,8 @@ class CoderAribiterSpec extends AnyFlatSpec
     }
   }
 }
-/*
-class CompressrorSpec extends AnyFlatSpec
-  with ChiselScalatestTester {
+
+class CompressrorSpec extends SpecClass {
   behavior of "Compressror"
 
   val db = new VerifyData("./paqFe/verify/db/all")
@@ -88,34 +85,35 @@ class CompressrorSpec extends AnyFlatSpec
       test(new CompressorTest)
       .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
         c.init()
-        statusWaitInitDone(c.clock, c.io.status)
+        statusWaitInitDone(c.clock, c.io.status, 1 << 17)
         c.test(input_file, output_file)
       } 
     }
+
     it should "tolerate throttling with data: " + test_name in {
       test(new CompressorTest)
       .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
         c.init()
-        statusWaitInitDone(c.clock, c.io.status)
+        statusWaitInitDone(c.clock, c.io.status, 1 << 18)
         c.test(input_file, output_file)
       } 
     }
   }
 
   it should "take multiple streams without reset between and output currect data" in {
-      test(new CompressorTest)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
-        c.init()
-        for(line <- db.data) {
-          val test_name = line(0)
-          val input_file = line(1)
-          val output_file = line(2)
+    test(new CompressorTest)
+    .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      c.init()
+      for(line <- db.data) {
+        val test_name = line(0)
+        val input_file = line(1)
+        val output_file = line(2)
 
-          statusWaitInitDone(c.clock, c.io.status)
-          c.test(input_file, output_file)
-        }
-      } 
-    }
+        statusWaitInitDone(c.clock, c.io.status, 1 << 18)
+        c.test(input_file, output_file)
+      }
+    } 
+  }
 }
 
 class CompressorTest extends Module {
@@ -131,6 +129,8 @@ class CompressorTest extends Module {
   inst.coder_rst := reset
   inst.model_clk := clock
   inst.model_rst := reset
+  inst.mixer_clk := clock
+  inst.mixer_rst := reset
 
   io.in <> inst.model_in
   inst.coder_out <> io.out
@@ -192,4 +192,3 @@ implicit class CompressorTestDUT(c: CompressorTest) {
   }
 }
 }
-*/

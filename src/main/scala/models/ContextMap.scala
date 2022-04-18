@@ -9,7 +9,6 @@ import paqFe.state.StaticStateMap
 
 import paqFe.types._
 
-
 class ContextMapOutputBundle extends Bundle {
   val bits = Vec(4, UInt(1.W))
   val probs = Vec(4, UInt(12.W))

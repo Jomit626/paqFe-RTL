@@ -131,8 +131,8 @@ class Compressor extends RawModule {
     model_status := orders.io.status
   }
 
-  withClockAndReset(mixer_clk, mixer_rst) {
-    mixers = Seq.fill(8){Module(new Mixer)}
+  withClockAndReset(mixer_clk, mixer_rst) { // TODO: refactor CDC
+    mixers = Seq.tabulate(8){i => Module(new Mixer(i == 0))}  // TODO: mixer init done
     val crossed = Model2MixerCrossing(gatterScatter.io.out, model_clk, model_rst, mixer_clk, mixer_rst)
 
     for(mixerIdx <- 0 until 8) {

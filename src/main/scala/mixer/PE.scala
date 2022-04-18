@@ -92,7 +92,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
 
   val sIdle :: sWorking :: Nil = Enum(2)
   val stateNxt = Wire(UInt())
-  val state = RegNext(stateNxt)
+  val state = RegNext(stateNxt, sIdle)
 
   val takeInput = io.in.fire
 
@@ -121,7 +121,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   macReload := cnt === 0.U
   macCE := true.B
   
-  output := ShiftRegister(cntWrp, macs.last.latency + SquashLatency)
+  output := ShiftRegister(cntWrp, macs.last.latency + SquashLatency, resetData = false.B, en = true.B)
   
   // outputs
   io.in.ready := inIdle || (inWorking && cntWrp)
@@ -192,7 +192,7 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
 
   val sIdle :: sWorking :: Nil = Enum(2)
   val stateNxt = Wire(UInt())
-  val state = RegNext(stateNxt)
+  val state = RegNext(stateNxt, sIdle)
 
   val takeInput = io.loss.valid
 

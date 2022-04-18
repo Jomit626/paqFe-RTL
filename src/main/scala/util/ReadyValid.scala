@@ -29,9 +29,9 @@ class DecoupledSkidBuf[T <: Data](gen: T) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(gen))
     val out = DecoupledIO(gen)
-  })
+  })  // TODO: comb loop
 
-  val inReady = RegNext(io.out.ready, false.B)
+  val inReady = RegNext(io.out.ready, true.B)
   val outValid = RegEnable(io.in.valid, false.B, inReady)
   val outBits = RegEnable(io.in.bits, inReady)
 

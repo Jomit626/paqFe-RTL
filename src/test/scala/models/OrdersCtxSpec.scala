@@ -38,7 +38,7 @@ class OrdersContextTest extends Module {
 
 class OrdersCtxSpec extends SpecClass {
   behavior of "OrdersCtx"
-  val db = new VerifyData(".//paqFe/verify/db/ordersctx")
+  val db = new VerifyData("./paqFe/verify/db/ordersctx")
   for(line <- db.data) {
     val data_name = line(0)
     val input_file = line(1)
