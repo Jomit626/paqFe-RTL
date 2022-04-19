@@ -98,7 +98,7 @@ class DPRam[T <: Data](gen : T, Depth : Int) extends RawModule {
   })
 
   withClock(io.wclk) {
-    val mem = Reg(Vec(Depth, gen))
+    val mem = Mem(Depth, gen)
     when(io.wen) {
       mem(io.waddr) := io.wdata
     }

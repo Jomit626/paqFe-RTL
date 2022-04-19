@@ -8,6 +8,7 @@ import paqFe.coder.ArithCoder
 import paqFe.mixer._
 import paqFe.models._
 import paqFe.util._
+import chisel3.stage.ChiselGeneratorAnnotation
 
 class CoderAribiter extends Module {
   val io = IO(new Bundle {
@@ -168,5 +169,5 @@ import paqFe.mixer.Mixer
 import paqFe.models._
 import paqFe.util._
 object GetTestVerilog extends App {
-  (new ChiselStage).emitVerilog(new Compressor)
+  
 }

@@ -5,7 +5,7 @@ import chisel3.util._
 
 import paqFe.types.StatusBundle
 
-class TDPRamWriteFirst[T <: Data](gen: T, width: Int) extends Module {
+class TDPRamWFRO[T <: Data](gen: T, width: Int) extends Module {
   val io = IO(new Bundle {
     val ena = Input(Bool())
     val wea = Input(Bool())
@@ -14,22 +14,28 @@ class TDPRamWriteFirst[T <: Data](gen: T, width: Int) extends Module {
     val doa = Output(gen)
 
     val enb = Input(Bool())
-    val web = Input(Bool())
     val addrb = Input(UInt(width.W))
-    val dinb = Input(gen)
     val dob = Output(gen)
   })
 
-  val mem = SyncReadMem(1 << width, gen, SyncReadMem.WriteFirst)
-  io.doa := mem.read(io.addra, io.ena)
-  when(io.ena && io.wea) {
-    mem.write(io.addra, io.dina)
+  val mem = Mem(1 << width, gen)
+  val doa = Reg(gen)
+  when(io.ena) {
+    when(io.wea) {
+      mem(io.addra) := io.dina
+      doa := io.dina
+    }otherwise {
+      doa := mem(io.addra)
+    }
   }
 
-  io.dob := mem.read(io.addrb, io.enb)
-  when(io.enb && io.web) {
-    mem.write(io.addrb, io.dinb)
+  val dob = Reg(gen)
+  when(io.enb) {
+    dob := mem(io.addrb)
   }
+
+  io.doa := doa
+  io.dob := dob
 }
 
 class RamInitUnit(AddrWidth : Int) extends Module {

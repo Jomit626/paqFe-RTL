@@ -52,12 +52,10 @@ class ContextMap(CtxWidth : Int) extends Module {
   val harzared2_d = RegEnable(harzared2, false.B, pipelineReady)
 
   // duel port, A write first, B read only
-  val ram = Module(new TDPRamWriteFirst(Vec(16, UInt(8.W)), CtxWidth))
+  val ram = Module(new TDPRamWFRO(UInt((16 * 8).W), CtxWidth))
   val ramInit = Module(new RamInitUnit(CtxWidth))
 
   ram.io.enb := io.in.valid && pipelineReady
-  ram.io.web := false.B
-  ram.io.dinb := DontCare
   ram.io.addrb := context
 
   ramInit.io.in.bits := last_dd & last_d
@@ -97,7 +95,7 @@ class ContextMap(CtxWidth : Int) extends Module {
   ram.io.ena := (valid_dd & pipelineReady) || ramInit.io.wen
   ram.io.wea := valid_dd || ramInit.io.wen
   ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
-  ram.io.dina := Mux(ramInit.io.status.initDone,lineNxt, 0.U.asTypeOf(ram.io.dina))
+  ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt.asUInt, 0.U.asTypeOf(ram.io.dina))
   
   pipelineReady := io.out.ready
 
@@ -105,9 +103,9 @@ class ContextMap(CtxWidth : Int) extends Module {
     when(harzared1) {
       dout := lineNxt
     }.elsewhen(harzared2_d) {
-      dout := ram.io.doa
+      dout := ram.io.doa.asTypeOf(dout)
     }.otherwise{
-      dout := ram.io.dob
+      dout := ram.io.dob.asTypeOf(dout)
     }
   }
   val states = VecInit(Seq(state0, state1, state2, state3))
@@ -118,7 +116,7 @@ class ContextMap(CtxWidth : Int) extends Module {
   io.out.bits.states := states
   io.out.bits.hit := hit
   io.out.bits.last := last_dd
-  io.out.valid := valid_dd && pipelineReady
+  io.out.valid := valid_dd
 
 
   io.in.ready := pipelineReady
