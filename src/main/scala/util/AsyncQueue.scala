@@ -107,7 +107,7 @@ class DPRam[T <: Data](gen : T, Depth : Int) extends RawModule {
   }
 }
 
-class AsyncQueue[T <: Data](gen : T, Depth : Int) extends Module {
+class AsyncQueue[T <: Data](gen : T, Depth : Int) extends RawModule {
   require(Depth > 0 && isPow2(Depth))
   val AddrWidth = log2Ceil(Depth)
   val io = IO(new Bundle {
@@ -122,27 +122,33 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends Module {
     val deq = DecoupledIO(gen)
   })
 
-  val sink = Module(new AsyncQueueSink(gen, AddrWidth))
-  val source = Module(new AsyncQueueSource(gen, AddrWidth))
   val mem = Module(new DPRam(gen, Depth))
+  
+  withClockAndReset(io.enq_clock, io.enq_reset) {
+    val source = Module(new AsyncQueueSource(gen, AddrWidth))
+    withClockAndReset(io.enq_clock, io.enq_reset) {
+      val sink = Module(new AsyncQueueSink(gen, AddrWidth))
 
-  mem.io.wclk := io.enq_clock
-  mem.io.wen := source.io.wen
-  mem.io.waddr := source.io.waddr
-  mem.io.wdata := source.io.wdata
+      mem.io.wclk := io.enq_clock
+      mem.io.wen := source.io.wen
+      mem.io.waddr := source.io.waddr
+      mem.io.wdata := source.io.wdata
+    
+      mem.io.raddr := sink.io.raddr
+      sink.io.rdata := mem.io.rdata
+    
+      sink.clock := io.deq_clock
+      sink.reset := io.deq_reset
+    
+      source.clock := io.enq_clock
+      source.reset := io.enq_reset
+    
+      source.io.rgray := sink.io.rgray
+      sink.io.wgray := source.io.wgray
+    
+      io.enq <> source.io.enq
+      sink.io.deq <> io.deq
+    }
+  }
 
-  mem.io.raddr := sink.io.raddr
-  sink.io.rdata := mem.io.rdata
-
-  sink.clock := io.deq_clock
-  sink.reset := io.deq_reset
-
-  source.clock := io.enq_clock
-  source.reset := io.enq_reset
-
-  source.io.rgray := sink.io.rgray
-  sink.io.wgray := source.io.wgray
-
-  io.enq <> source.io.enq
-  sink.io.deq <> io.deq
 }

@@ -39,51 +39,6 @@ class CoderAribiter extends Module {
   
 }
 
-object Mixer2CoderCrossing {
-  def apply(ins : Vec[DecoupledIO[BitProbBundle]],
-            mClock : Clock, mRest : Bool,
-            cClock : Clock, cRest : Bool)
-     : Vec[DecoupledIO[BitProbBundle]] = {
-    val outs = Wire(Vec(ins.length, new DecoupledIO(new BitProbBundle)))
-    val queues = Seq.fill(ins.length) {Module(new AsyncQueue(new BitProbBundle, 8))}
-
-    (0 until ins.length).map{ i =>
-      queues(i).io.enq_clock := mClock
-      queues(i).io.enq_reset := mRest
-      queues(i).io.deq_clock := cClock
-      queues(i).io.deq_reset := cRest
-
-      queues(i).io.enq <> ins(i)
-
-      outs(i) <> queues(i).io.deq
-    }
-    
-    outs
-  }
-}
-
-object Model2MixerCrossing {
-  def apply(in: Vec[DecoupledIO[MixerInputBundle]],
-            modelClock: Clock, modelRest: Bool,
-            mixerClock: Clock, mixerRest: Bool) = {
-    val out = Wire(Vec(in.length, DecoupledIO(chiselTypeOf(in.head.bits))))
-    val queues = Seq.fill(in.length) {Module(new AsyncQueue(chiselTypeOf(in.head.bits), 8))}
-
-    (0 until in.length).map{ i =>
-      queues(i).io.enq_clock := modelClock
-      queues(i).io.enq_reset := modelRest
-      queues(i).io.deq_clock := mixerClock
-      queues(i).io.deq_reset := mixerRest
-
-      queues(i).io.enq <> in(i)
-
-      out(i) <> queues(i).io.deq
-    }
-    
-    out
-  }
-}
-
 class Compressor extends RawModule {
   val model_clk = IO(Input(Clock()))
   val model_rst = IO(Input(Bool()))
@@ -99,8 +54,30 @@ class Compressor extends RawModule {
   
   val coder_out = IO(DecoupledIO(new ByteIdxBundle()))
   
+  implicit val p = new MixerParameter(4, 1)
+  var orders: Orders = null
+  var mixers: Seq[Mixer] = null
+  var gatterScatter: ProbGatterScatter = null
   var coders : Seq[ArithCoder] = null
   
+  withClockAndReset(model_clk, model_rst) {
+    val byte2nibble = Module(new Byte2Nibble(1))
+    gatterScatter = Module(new ProbGatterScatter())
+    orders = Module(new Orders())
+    
+    byte2nibble.io.in <> model_in
+    orders.io.in <> byte2nibble.io.out(0)
+    
+    gatterScatter.io.in <> orders.io.outProb
+    gatterScatter.io.inCtx <> VecInit(Seq(orders.io.outCtx))
+    
+    model_status := orders.io.status
+  }
+  
+  withClockAndReset(mixer_clk, mixer_rst) {
+    mixers = Seq.tabulate(8){i => Module(new Mixer(i == 0))}  // TODO: mixer init done
+  }
+
   withClockAndReset(coder_clk, coder_rst) {
     coders = Seq.fill(8) {Module(new ArithCoder())}
     val arib = Module(new CoderAribiter)
@@ -111,51 +88,35 @@ class Compressor extends RawModule {
     coder_out <> arib.io.out
   }
 
-  implicit val p = new MixerParameter(4, 1)
-  var orders: Orders = null
-  var mixers: Seq[Mixer] = null
-  var gatterScatter: ProbGatterScatter = null
+  val model2mixer = Module(new Model2MixerCrossing)
+  model2mixer.io.model_clk := model_clk
+  model2mixer.io.model_rst := model_rst
+  gatterScatter.io.out <> model2mixer.io.in
 
-  
-  withClockAndReset(model_clk, model_rst) {
-    val byte2nibble = Module(new Byte2Nibble(1))
-    gatterScatter = Module(new ProbGatterScatter())
-    orders = Module(new Orders())
-    
-    byte2nibble.io.in <> model_in
-    orders.io.in <> byte2nibble.io.out(0)
+  model2mixer.io.mixer_clk := mixer_clk
+  model2mixer.io.mixer_rst := mixer_rst
+  val mixersIn = VecInit(mixers.map(_.io.in))
+  model2mixer.io.out <> mixersIn
 
-    gatterScatter.io.in <> orders.io.outProb
-    gatterScatter.io.inCtx <> VecInit(Seq(orders.io.outCtx))
+  val mixer2coder = Module(new Mixer2CoderCrossing)
+  mixer2coder.io.mixer_clk := mixer_clk
+  mixer2coder.io.mixer_rst := mixer_rst
+  val mixersOut = VecInit(mixers.map(_.io.out))
+  mixersOut <> mixer2coder.io.in
 
-    model_status := orders.io.status
-  }
-
-  withClockAndReset(mixer_clk, mixer_rst) { // TODO: refactor CDC
-    mixers = Seq.tabulate(8){i => Module(new Mixer(i == 0))}  // TODO: mixer init done
-    val crossed = Model2MixerCrossing(gatterScatter.io.out, model_clk, model_rst, mixer_clk, mixer_rst)
-
-    for(mixerIdx <- 0 until 8) {
-      mixers(mixerIdx).io.in <> crossed(mixerIdx)
-    }
-  }
-
-  withClockAndReset(coder_clk, coder_rst) {
-    val modelOut = Mixer2CoderCrossing(VecInit(mixers.map(_.io.out)), model_clk, model_rst, coder_clk, coder_rst)
-    
-    (0 until 8).map{ i =>
-      DecoupledHalfRegSlice(modelOut(i)) <> coders(i).io.in
-    }
-  }
+  mixer2coder.io.coder_clk := coder_clk
+  mixer2coder.io.coder_rst := coder_rst
+  val codersIn = VecInit(coders.map(_.io.in))
+  mixer2coder.io.out <> codersIn
 }
 
 class CompressrorWrapped extends RawModule {
   val S_AXIS_ACLK = IO(Input(Clock()))
   val S_AXIS_ARESTN = IO(Input(Bool()))
-
+  
   val M_AXIS_ACLK = IO(Input(Clock()))
   val M_AXIS_ARESTN = IO(Input(Bool()))
-
+  
   val S_AXIS = IO(new Bundle {
     val TDATA = Input(UInt(8.W))
     val TKEEP = Input(UInt(1.W))
