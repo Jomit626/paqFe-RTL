@@ -1,8 +1,4 @@
-`define INPUT_FILE "input"
-`define OUTPUT_FILE "output"
-
 `include "../../Compressor.v"
-`include "../../bytewrite_tdp_ram.v"
 
 module file2stream (
   input wire clk,
@@ -55,20 +51,25 @@ endmodule
 module clk_gen (
   output reg clk_160MHz,
   output reg clk_160MHz_rst,
+  output reg clk_400MHz,
+  output reg clk_400MHz_rst,
   output reg clk_80MHz,
   output reg clk_80MHz_rst
 );
   initial begin
     clk_160MHz = 0;  
     clk_80MHz = 0;
+    clk_400MHz = 0;
 
     clk_160MHz_rst = 0;
     clk_80MHz_rst = 0;
+    clk_400MHz_rst = 0;
 
     #1000
 
     clk_160MHz_rst = 1;
     clk_80MHz_rst = 1;
+    clk_400MHz_rst = 1;
   end
 
   always begin
@@ -81,6 +82,10 @@ module clk_gen (
     clk_80MHz = ~clk_80MHz;
   end
 
+  always begin
+    #2.50;
+    clk_400MHz = ~clk_400MHz;
+  end
 endmodule
 
 module stream2manyfile (
@@ -151,7 +156,7 @@ module counter(
 
 endmodule
 
-module StreamMonitor(
+module StreamMonitor (
   input wire clk,
   input wire rst_n,
 
@@ -196,7 +201,7 @@ module StreamMonitor(
   always @(posedge clk) begin
     if(~rst_n)
       transfer_time_counter <= 'd0;
-    else
+    else if(state == 'd1)
       transfer_time_counter <= transfer_time_counter + 'd1;
   end
 endmodule
@@ -204,18 +209,24 @@ endmodule
 module tb();
   wire clk_160MHz;
   wire clk_160MHz_rst_n;
+  wire clk_400MHz;
+  wire clk_400MHz_rst_n;
   wire clk_80MHz;
   wire clk_80MHz_rst_n;
 
   clk_gen clk_gen_inst0(
     .clk_160MHz(clk_160MHz),
     .clk_160MHz_rst(clk_160MHz_rst_n),
+    .clk_400MHz(clk_400MHz),
+    .clk_400MHz_rst(clk_400MHz_rst_n),
     .clk_80MHz(clk_80MHz),
     .clk_80MHz_rst(clk_80MHz_rst_n)
   );
 
   wire model_clk = clk_160MHz;
   wire model_rst = ~clk_160MHz_rst_n;
+  wire mixer_clk = clk_400MHz;
+  wire mixer_rst = ~clk_400MHz_rst_n;
   wire model_in_ready;
   wire model_in_valid;
   wire [7:0] model_in_bits_byte;
@@ -230,6 +241,8 @@ module tb();
   wire coder_out_bits_last;
 
   Compressor dut(
+    .mixer_clk(mixer_clk),
+    .mixer_rst(mixer_rst),
     .model_clk(model_clk),
     .model_rst(model_rst),
     .model_in_ready(model_in_ready),
