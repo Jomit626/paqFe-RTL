@@ -1,5 +1,9 @@
 `include "../../Compressor.v"
 
+`define MODLE_PEIROD 12.5
+`define MIXER_PEIROD 3.50
+`define CODER_PEIROD 25.0
+
 module file2stream (
   input wire clk,
   input wire rst_n,
@@ -49,42 +53,42 @@ module file2stream (
 endmodule
 
 module clk_gen (
-  output reg clk_160MHz,
-  output reg clk_160MHz_rst,
-  output reg clk_400MHz,
-  output reg clk_400MHz_rst,
-  output reg clk_80MHz,
-  output reg clk_80MHz_rst
+  output reg model_clk,
+  output reg model_rst_n,
+  output reg coder_clk,
+  output reg coder_rst_n,
+  output reg mixer_clk,
+  output reg mixer_rst_n
 );
   initial begin
-    clk_160MHz = 0;  
-    clk_80MHz = 0;
-    clk_400MHz = 0;
+    model_clk = 0;  
+    coder_clk = 0;
+    mixer_clk = 0;
 
-    clk_160MHz_rst = 0;
-    clk_80MHz_rst = 0;
-    clk_400MHz_rst = 0;
+    model_rst_n = 0;
+    coder_rst_n = 0;
+    mixer_rst_n = 0;
 
     #1000
 
-    clk_160MHz_rst = 1;
-    clk_80MHz_rst = 1;
-    clk_400MHz_rst = 1;
+    model_rst_n = 1;
+    coder_rst_n = 1;
+    mixer_rst_n = 1;
   end
 
   always begin
-    #3.125;
-    clk_160MHz = ~clk_160MHz;
+    #(`MODLE_PEIROD / 2.0);
+    model_clk = ~model_clk;
   end
 
   always begin
-    #6.25;
-    clk_80MHz = ~clk_80MHz;
+    #(`CODER_PEIROD / 2.0);
+    coder_clk = ~coder_clk;
   end
 
   always begin
-    #2.50;
-    clk_400MHz = ~clk_400MHz;
+    #(`MIXER_PEIROD / 2.0);
+    mixer_clk = ~mixer_clk;
   end
 endmodule
 
@@ -207,38 +211,34 @@ module StreamMonitor (
 endmodule
 
 module tb();
-  wire clk_160MHz;
-  wire clk_160MHz_rst_n;
-  wire clk_400MHz;
-  wire clk_400MHz_rst_n;
-  wire clk_80MHz;
-  wire clk_80MHz_rst_n;
-
-  clk_gen clk_gen_inst0(
-    .clk_160MHz(clk_160MHz),
-    .clk_160MHz_rst(clk_160MHz_rst_n),
-    .clk_400MHz(clk_400MHz),
-    .clk_400MHz_rst(clk_400MHz_rst_n),
-    .clk_80MHz(clk_80MHz),
-    .clk_80MHz_rst(clk_80MHz_rst_n)
-  );
-
-  wire model_clk = clk_160MHz;
-  wire model_rst = ~clk_160MHz_rst_n;
-  wire mixer_clk = clk_400MHz;
-  wire mixer_rst = ~clk_400MHz_rst_n;
+  wire model_clk;
+  wire model_rst_n;
+  wire model_rst = ~model_rst_n;
+  wire mixer_clk;
+  wire mixer_rst_n;
+  wire mixer_rst = ~mixer_rst_n;
+  wire coder_clk;
+  wire coder_rst_n;
+  wire coder_rst = ~coder_rst_n;
   wire model_in_ready;
   wire model_in_valid;
   wire [7:0] model_in_bits_byte;
   wire model_in_bits_last;
   wire model_status_initDone;
-  wire coder_clk = clk_80MHz;
-  wire coder_rst = ~clk_80MHz_rst_n;
   wire coder_out_ready;
   wire coder_out_valid;
   wire [7:0] coder_out_bits_idx;
   wire [7:0] coder_out_bits_byte;
   wire coder_out_bits_last;
+
+  clk_gen clk_gen_inst0(
+    .model_clk(model_clk),
+    .model_rst_n(model_rst_n),
+    .coder_clk(coder_clk),
+    .coder_rst_n(coder_rst_n),
+    .mixer_clk(mixer_clk),
+    .mixer_rst_n(mixer_rst_n)
+  );
 
   Compressor dut(
     .mixer_clk(mixer_clk),
@@ -307,11 +307,15 @@ module tb();
     .transfer_counter(output_cnt)
   );
 
-  always @(posedge clk_160MHz) begin
+  always @(posedge coder_clk) begin
     if(coder_out_ready && coder_out_valid && coder_out_bits_last) begin
       $display(
         "Input Stream Monitor\nClock Cnt: %d\nHandshake Cnt: %d\nTime : %dns\nTP:%d ns/Byte, %d MB/s"
-        , input_time_cnt, input_cnt, input_time_cnt*6.25,(input_time_cnt*6.25)/input_cnt,input_cnt/(input_time_cnt*6.25) * 953.67);
+        , input_time_cnt,
+          input_cnt,
+          input_time_cnt*(`MODLE_PEIROD),
+          (input_time_cnt*(`MODLE_PEIROD)) / input_cnt,
+          input_cnt/(input_time_cnt*(`MODLE_PEIROD)) * 953.67);
       $display(
         "Output Stream Monitor\nClock Cnt: %d\nHandshake Cnt: %d\n"
         , output_time_cnt, output_cnt);

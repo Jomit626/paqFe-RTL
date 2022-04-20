@@ -126,7 +126,7 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends RawModule {
   
   withClockAndReset(io.enq_clock, io.enq_reset) {
     val source = Module(new AsyncQueueSource(gen, AddrWidth))
-    withClockAndReset(io.enq_clock, io.enq_reset) {
+    withClockAndReset(io.deq_clock, io.deq_reset) {
       val sink = Module(new AsyncQueueSink(gen, AddrWidth))
 
       mem.io.wclk := io.enq_clock

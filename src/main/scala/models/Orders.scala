@@ -163,24 +163,25 @@ class Orders extends Module {
 
   val contextGen = Module(new OrdersContext())
   
-  val o1CtxMap = Module(new ContextMap(12))
+  val o1CtxMap = Module(new ContextMap(12, 12))
   val o2CtxMap = Module(new ContextMap(16))
   val o3CtxMap = Module(new ContextMap(16))
   val o4CtxMap = Module(new ContextMap(17))
   val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap)
 
+  val maxLatency = contextMaps.map(_.latency).reduce(_ max _)
   val convter = Module(new ContextMapsToModel(4))
 
   io.in <> contextGen.io.in
-  o1CtxMap.io.in <> contextGen.io.o1Out
-  o2CtxMap.io.in <> contextGen.io.o2Out
-  o3CtxMap.io.in <> contextGen.io.o3Out
+  o1CtxMap.io.in <> Queue(contextGen.io.o1Out, maxLatency - o1CtxMap.latency)
+  o2CtxMap.io.in <> Queue(contextGen.io.o2Out, maxLatency - o2CtxMap.latency)
+  o3CtxMap.io.in <> Queue(contextGen.io.o3Out, maxLatency - o2CtxMap.latency)
   o4CtxMap.io.in <> contextGen.io.o4Out
 
-  convter.io.in(0) <> o1CtxMap.io.out
-  convter.io.in(1) <> o2CtxMap.io.out
-  convter.io.in(2) <> o3CtxMap.io.out
-  convter.io.in(3) <> o4CtxMap.io.out
+  convter.io.in(0) <> Queue(o1CtxMap.io.out, 4)
+  convter.io.in(1) <> Queue(o2CtxMap.io.out, 4)
+  convter.io.in(2) <> Queue(o3CtxMap.io.out, 4)
+  convter.io.in(3) <> Queue(o4CtxMap.io.out, 4)
 
   for(j <- 0 until 8) {
     for(i <- 0 until io.outProb.length) {
