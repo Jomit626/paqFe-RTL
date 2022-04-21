@@ -117,7 +117,10 @@ class CompressrorWrapped extends RawModule {
   
   val M_AXIS_ACLK = IO(Input(Clock()))
   val M_AXIS_ARESTN = IO(Input(Bool()))
-  
+
+  val MIXER_CLK = IO(Input(Clock()))
+  val MIXER_ARESTN = IO(Input(Bool()))
+
   val S_AXIS = IO(new Bundle {
     val TDATA = Input(UInt(8.W))
     val TKEEP = Input(UInt(1.W))
@@ -139,7 +142,9 @@ class CompressrorWrapped extends RawModule {
   }
   val inst = Module(new Compressor)
 
-  
+  inst.mixer_clk := MIXER_CLK
+  inst.mixer_rst := ~MIXER_ARESTN
+
   inst.model_clk := S_AXIS_ACLK
   inst.model_rst := ~S_AXIS_ARESTN
   inst.model_in.bits.byte := S_AXIS.TDATA
@@ -161,13 +166,20 @@ class CompressrorWrapped extends RawModule {
 
 import chisel3.stage.ChiselStage
 object GetCompressorVerilog extends App {
-  (new ChiselStage).emitVerilog(new Compressor)
+  (new ChiselStage).execute(
+  Array(
+    "-X", "verilog", 
+    "--target-dir", "sim/src"), 
+  Seq(ChiselGeneratorAnnotation(() => new Compressor())))
+  (new ChiselStage).execute(
+  Array(
+    "-X", "verilog", 
+    "--target-dir", "genrtl"), 
+  Seq(ChiselGeneratorAnnotation(() => new CompressrorWrapped())))
+  (new ChiselStage).execute(
+  Array(
+    "-X", "verilog", 
+    "--target-dir", "sim/AsyncQueueTB/src"), 
+  Seq(ChiselGeneratorAnnotation(() => new AsyncQueue(UInt(8.W), 16))))
 }
 
-import models.ContextMap
-import paqFe.mixer.Mixer
-import paqFe.models._
-import paqFe.util._
-object GetTestVerilog extends App {
-  
-}

@@ -1,8 +1,8 @@
-`include "../../Compressor.v"
+`include "../../genrtl/Compressor.v"
 
-`define MODLE_PEIROD 12.5
-`define MIXER_PEIROD 3.50
-`define CODER_PEIROD 25.0
+`define MODLE_PEIROD 12.500
+`define MIXER_PEIROD 3.3333
+`define CODER_PEIROD 25.000
 
 module file2stream (
   input wire clk,
@@ -78,17 +78,17 @@ module clk_gen (
 
   always begin
     #(`MODLE_PEIROD / 2.0);
-    model_clk = ~model_clk;
+    model_clk <= ~model_clk;
   end
 
   always begin
     #(`CODER_PEIROD / 2.0);
-    coder_clk = ~coder_clk;
+    coder_clk <= ~coder_clk;
   end
 
   always begin
     #(`MIXER_PEIROD / 2.0);
-    mixer_clk = ~mixer_clk;
+    mixer_clk <= ~mixer_clk;
   end
 endmodule
 

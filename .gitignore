@@ -353,6 +353,11 @@ hs_err_pid*
 *.log
 
 # vivado sim files
+sim/src
+!sim/src/tb.v
 sim/xsim.dir
 sim/axsim.sh
 *.pb
+
+# generated files
+genrtl

@@ -36,6 +36,6 @@ do
 done
 
 rm -f ./axsim.sh *.log *.jou *.pb *.str
-rm -rf xsim.dir
+rm -rf xsim.dir .Xil
 
 cd -
