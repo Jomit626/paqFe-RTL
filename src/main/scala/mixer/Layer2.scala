@@ -3,7 +3,7 @@ package paqFe.mixer
 import chisel3._
 import chisel3.util._
 import paqFe.types.BitProbBundle
-import paqFe.types.TreeReduce
+import paqFe.util.TreeReduce
 
 class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {

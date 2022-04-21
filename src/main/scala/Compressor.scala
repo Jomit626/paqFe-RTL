@@ -176,10 +176,5 @@ object GetCompressorVerilog extends App {
     "-X", "verilog", 
     "--target-dir", "genrtl"), 
   Seq(ChiselGeneratorAnnotation(() => new CompressrorWrapped())))
-  (new ChiselStage).execute(
-  Array(
-    "-X", "verilog", 
-    "--target-dir", "sim/AsyncQueueTB/src"), 
-  Seq(ChiselGeneratorAnnotation(() => new AsyncQueue(UInt(8.W), 16))))
 }
 

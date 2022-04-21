@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 
 import paqFe.types._
+import paqFe.util._
 
 class VecDotPackBundle(implicit p : MixerParameter) extends Bundle {
   val x = Vec(p.nFeatures, SInt(p.XWidth))
