@@ -51,7 +51,7 @@ class AsyncQueueSource[T <: Data](gen : T, AddrWidth : Int) extends Module {
   io.waddr := waddr
   io.wdata := io.enq.bits
 
-  io.wgray := wgray
+  io.wgray := RegNext(wgray, 0.U)
 }
 
 class AsyncQueueSink[T <: Data](gen : T, AddrWidth : Int) extends Module {
@@ -80,7 +80,7 @@ class AsyncQueueSink[T <: Data](gen : T, AddrWidth : Int) extends Module {
 
   io.raddr := raddr
   
-  io.rgray := rgray
+  io.rgray := RegNext(rgray, 0.U)
 }
 
 class DPRam[T <: Data](gen : T, Depth : Int) extends RawModule {
@@ -93,16 +93,19 @@ class DPRam[T <: Data](gen : T, Depth : Int) extends RawModule {
     val waddr = Input(UInt(AddrWidth.W))
     val wdata = Input(gen)
 
+    val rclk = Input(Clock())
     val raddr = Input(UInt(AddrWidth.W))
     val rdata = Output(gen)
   })
 
+  val mem = Mem(Depth, gen)
   withClock(io.wclk) {
-    val mem = Mem(Depth, gen)
     when(io.wen) {
       mem(io.waddr) := io.wdata
     }
-
+  }
+  
+  withClock(io.rclk) {
     io.rdata := mem(io.raddr)
   }
 }
@@ -133,7 +136,8 @@ class AsyncQueue[T <: Data](gen : T, Depth : Int) extends RawModule {
       mem.io.wen := source.io.wen
       mem.io.waddr := source.io.waddr
       mem.io.wdata := source.io.wdata
-    
+      
+      mem.io.rclk := io.deq_clock
       mem.io.raddr := sink.io.raddr
       sink.io.rdata := mem.io.rdata
     
