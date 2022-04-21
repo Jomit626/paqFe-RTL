@@ -38,7 +38,7 @@ class TDPRamWFRO[T <: Data](gen: T, width: Int) extends Module {
   io.dob := dob
 }
 
-class RamInitUnit(AddrWidth : Int) extends Module {
+class RamInitUnit(AddrWidth : Int, delay: Int = 2) extends Module {
   val io = IO(new Bundle{
     val in = Flipped(ValidIO(Bool()))
 
@@ -53,8 +53,8 @@ class RamInitUnit(AddrWidth : Int) extends Module {
 
   initDone := (initDone || cntDone) && ~(io.in.valid && io.in.bits)
 
-  io.wen := ~initDone
-  io.waddr := cnt
+  io.wen := ShiftRegister(~initDone, delay)
+  io.waddr := ShiftRegister(cnt, delay)
 
-  io.status.initDone := initDone
+  io.status.initDone := ShiftRegister(initDone, delay)
 }

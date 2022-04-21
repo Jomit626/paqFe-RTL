@@ -28,7 +28,7 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
   val dot = RegNext(mul.reduce(_ + _) >> 16)
   //val dot = RegNext(TreeReduce[SInt](mul, (a, b) => a + b))
 
-  val xQueue = Module(new Queue(Vec(p.nHidden, SInt(p.XWidth)), 8))
+  val xQueue = Module(new Queue(Vec(p.nHidden, SInt(p.XWidth)), 8, useSyncReadMem = true))
   xQueue.io.enq.valid := io.in.valid
   xQueue.io.enq.bits := io.in.bits.x
   when(io.in.valid) {
