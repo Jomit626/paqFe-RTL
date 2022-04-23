@@ -17,7 +17,7 @@ abstract class SpecClass
 }
 
 object statusWaitInitDone {
-  def apply(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12), step: Int = 128) = {
+  def apply(clock: Clock, status : StatusBundle, timeout : Int = (1 << 12), step: Int = 16) = {
     clock.setTimeout(1000 + timeout)
 
     var done = false

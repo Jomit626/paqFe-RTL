@@ -13,8 +13,8 @@ ENWIK8_DATA=$PROJ_FOLDER/paqFe/test/big_data/enwik8
 
 mkdir -p $TMP_FOLDER
 
-$PQAFE -c -i $ENWIK8_DATA -o $PROJ_FOLDER/paqFe/tmp/enwik8.paqfe
 sudo $PQAFE_RTL -i $ENWIK8_DATA -o $TMP_FOLDER/enwik8.paqfe-rtl
+$PQAFE -c -i $ENWIK8_DATA -o $PROJ_FOLDER/paqFe/tmp/enwik8.paqfe
 
 for i in {0..7}
 do

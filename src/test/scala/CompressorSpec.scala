@@ -19,8 +19,7 @@ import LocalHelpers._
 class CoderAribiterSpec extends SpecClass {
   behavior of "CoderAribiter"
   it should "merge 8 stream into 1 tagged with idx and set last singal currectly" in {
-    test(new CoderAribiter)
-      .withAnnotations(Seq(WriteVcdAnnotation)) {c => 
+    test(new CoderAribiter) {c => 
       for(i <- 0 until 8) {
         c.io.in(i).initSource()
         c.io.in(i).setSourceClock(c.clock)
@@ -83,7 +82,7 @@ class CompressrorSpec extends SpecClass {
 
     it should "match software model with data: " + test_name in {
       test(new CompressorTest)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         statusWaitInitDone(c.clock, c.io.status, 1 << 17)
         c.test(input_file, output_file)
@@ -92,7 +91,7 @@ class CompressrorSpec extends SpecClass {
 
     it should "tolerate throttling with data: " + test_name in {
       test(new CompressorTest)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         statusWaitInitDone(c.clock, c.io.status, 1 << 18)
         c.test(input_file, output_file)
@@ -102,7 +101,7 @@ class CompressrorSpec extends SpecClass {
 
   it should "take multiple streams without reset between and output currect data" in {
     test(new CompressorTest)
-    .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+    .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       c.init()
       for(line <- db.data) {
         val test_name = line(0)

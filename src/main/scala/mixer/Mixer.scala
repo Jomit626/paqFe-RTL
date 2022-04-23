@@ -53,10 +53,10 @@ class Mixer(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) ext
 
   l2.io.in <> DecoupledSimpleGatter(l1tol2Queues, layer1ToLayer2)
 
-  val outputQueueSize = 16
+  val outputQueueSize = 32
   val maxExecSize = (l1.latency + l2.latency + p.VecDotII - 1) / p.VecDotII
   require(outputQueueSize - (maxExecSize + 1) > 0)
-  val outputQueue = Module(new Queue(new BitProbBundle(), outputQueueSize))
+  val outputQueue = Module(new Queue(new BitProbBundle(), outputQueueSize, useSyncReadMem = true))
   stall := RegNext(outputQueue.io.count > (outputQueueSize - (maxExecSize + 1)).U, false.B)
 
   outputQueue.io.enq.valid := l2.io.out.valid

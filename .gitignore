@@ -354,7 +354,7 @@ hs_err_pid*
 
 # vivado sim files
 sim/src
-!sim/src/tb.v
+!sim/src/tb.sv
 sim/xsim.dir
 sim/axsim.sh
 *.pb

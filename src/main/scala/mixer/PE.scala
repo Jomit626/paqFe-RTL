@@ -219,6 +219,8 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
   // data path
   val loss = RegEnable(io.loss.bits, io.loss.valid)
 
+  def getSign(x: SInt) = x(x.getWidth - 1)
+
   val mss = Seq.fill(p.VecScaleSubMSNum) {Module(new MS(p.XWidth, p.lossWidth, p.WeightWidth))}
   mss.zipWithIndex.foreach{case (m, i) =>
     m.io.ce := true.B
@@ -226,7 +228,17 @@ class UpdatePE()(implicit p : MixerParameter) extends Module {
     m.io.b := loss
     m.io.c := io.updateStrm.bits.w(i)
 
-    io.wStrm.bits.w(i) := m.io.out
+    val aSign = getSign(m.io.a)
+    val bSign = getSign(m.io.b)
+    val cSign = getSign(m.io.c)
+
+    val mulSign = ShiftRegister(aSign ^ bSign, m.latency)
+    val weightSign = ShiftRegister(cSign, m.latency)
+    val sumSign = getSign(m.io.out)
+
+    val overflow = ~mulSign & ~weightSign & sumSign
+    val underflow = mulSign & weightSign & ~sumSign
+    io.wStrm.bits.w(i) := Mux(overflow, 65535.S, Mux(underflow, -65536.S, m.io.out)) 
   }
 
   // io

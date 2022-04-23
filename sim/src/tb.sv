@@ -1,5 +1,3 @@
-`include "../../genrtl/Compressor.v"
-
 `define MODLE_PEIROD 12.500
 `define MIXER_PEIROD 3.3333
 `define CODER_PEIROD 25.000
