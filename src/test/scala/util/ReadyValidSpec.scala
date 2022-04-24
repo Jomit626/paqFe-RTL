@@ -18,7 +18,7 @@ import paqFe.SpecClass
 class DecoupledRegSliceSpec extends SpecClass {
   behavior of "DecoupledSkidBuf"
   it should "Operating without lossing data" in {
-    test(new DecoupledSkidBuf(UInt(8.W))).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new DecoupledSkidBuf(UInt(8.W))).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       val data = Seq.tabulate(16) {i => (i & 0xFF).U}
       dut.io.in.initSource()
       dut.io.in.setSourceClock(dut.clock)

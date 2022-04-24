@@ -33,7 +33,7 @@ class MixerLayer1Test(implicit p: MixerParameter) extends Module {
 
 class MixerLayer1Spec extends SpecClass {
   behavior of "Mixer Layer 1"
-  val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer-l1")
+  val mixerPredictDB = new VerifyData("./verify/db/mixer-l1")
   for(line <- mixerPredictDB.data) {
     val data_name = line(0)
     val input_file = line(1)
@@ -42,7 +42,7 @@ class MixerLayer1Spec extends SpecClass {
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new MixerLayer1Test())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file)
       }

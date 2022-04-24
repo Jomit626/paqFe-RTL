@@ -38,7 +38,7 @@ class OrdersTest extends Module {
 import chiseltest.simulator.SimulatorDebugAnnotation
 class OrdersSpec extends SpecClass {
   behavior of "Orders"
-  val db = new VerifyData("./paqFe/verify/db/orders")
+  val db = new VerifyData("./verify/db/orders")
   for(line <- db.data) {
     val data_name = line(0)
     val input_file = line(1)

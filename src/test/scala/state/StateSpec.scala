@@ -29,8 +29,8 @@ class StateSpec extends AnyFlatSpec
   behavior of "State Shift"
   it should "match software" in {
     test(new StateTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
-      val db = new VerifyData("./paqFe/verify/db/stateshift")
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+      val db = new VerifyData("./verify/db/stateshift")
       for(line <- db.data) {
         val test_name = line(0)
         val input_file = line(1)

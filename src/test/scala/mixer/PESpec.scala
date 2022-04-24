@@ -23,7 +23,7 @@ import PEHelpers._
 
 class PredictPESpec extends SpecClass{
   behavior of "Mixer Prediction Function"
-  val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-predict")
+  val mixerPredictDB = new VerifyData("./verify/db/mixer-l1-pe-predict")
 
   for(line <- mixerPredictDB.data) {
     val data_name = line(0)
@@ -33,7 +33,7 @@ class PredictPESpec extends SpecClass{
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new PredictPE())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
 
         c.test(output_file)
@@ -45,7 +45,7 @@ class PredictPESpec extends SpecClass{
 
 class LossCalPESpec extends SpecClass {
   behavior of "Loss Calcuation PE"
-  val mixerLossDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-loss")
+  val mixerLossDB = new VerifyData("./verify/db/mixer-l1-pe-loss")
   for(line <- mixerLossDB.data) {
     val data_name = line(0)
     val input_file = line(1)
@@ -54,7 +54,7 @@ class LossCalPESpec extends SpecClass {
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new LossCalPE())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file)
       }
@@ -64,7 +64,7 @@ class LossCalPESpec extends SpecClass {
 
 class UpdatePESpec extends SpecClass {
   behavior of "Weight Update PE"
-  val mixerUpdateDB = new VerifyData("./paqFe/verify/db/mixer-l1-pe-update")
+  val mixerUpdateDB = new VerifyData("./verify/db/mixer-l1-pe-update")
   for(line <- mixerUpdateDB.data) {
     val data_name = line(0)
     val input_file = line(1)
@@ -73,7 +73,7 @@ class UpdatePESpec extends SpecClass {
     implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new UpdatePE())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file)
       }

@@ -34,7 +34,7 @@ class MixerTest(implicit p: MixerParameter) extends Module {
 
 class MixerSpec extends SpecClass {
   behavior of "Mixer"
-  val mixerPredictDB = new VerifyData("./paqFe/verify/db/mixer")
+  val mixerPredictDB = new VerifyData("./verify/db/mixer")
   implicit val p = GetMixerConfig()
 
   for(line <- mixerPredictDB.data) {
@@ -44,7 +44,7 @@ class MixerSpec extends SpecClass {
 
     it should s"match software model with data: $data_name" in {
       test(new MixerTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file)
       }
@@ -52,7 +52,7 @@ class MixerSpec extends SpecClass {
     
     it should s"tolerate throttling with data: $data_name" in {
       test(new MixerTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file, true)
       }
@@ -61,7 +61,7 @@ class MixerSpec extends SpecClass {
 
   it should "take multiple streams without reset between and output currect data" in {
     test(new MixerTest())
-    .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+    .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
 
       c.init()
       for(line <- mixerPredictDB.data) {

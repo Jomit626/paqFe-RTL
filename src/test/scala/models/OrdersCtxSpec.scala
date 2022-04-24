@@ -50,7 +50,7 @@ class OrdersCtxSpec extends SpecClass {
     
     it should s"match software model with data: $data_name" in {
       test(new OrdersContextTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(input_file, output_file)
       }
@@ -58,7 +58,7 @@ class OrdersCtxSpec extends SpecClass {
 
     it should s"tolerate throttling with data: $data_name" in {
       test(new OrdersContextTest())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(input_file, output_file, true)
       }
@@ -67,7 +67,7 @@ class OrdersCtxSpec extends SpecClass {
   
   it should "take multiple streams without reset between and output currect data" in {
     test(new OrdersContextTest())
-    .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { c =>
+    .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
 
       c.init()
       for(line <- db.data) {

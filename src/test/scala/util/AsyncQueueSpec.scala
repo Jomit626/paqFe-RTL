@@ -36,7 +36,7 @@ class AsyncQueueSpec extends AnyFlatSpec
   
   behavior of "AsyncQueue"
   it should "Operating without lossing data" in {
-    test(new SyncQueue(UInt(8.W), 8)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new SyncQueue(UInt(8.W), 8)).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       val data = Seq.tabulate(4096) {i => (i & 0xFF).U}
       dut.io.enq.initSource()
       dut.io.enq.setSourceClock(dut.clock)

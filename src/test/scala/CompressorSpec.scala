@@ -74,7 +74,7 @@ class CoderAribiterSpec extends SpecClass {
 class CompressrorSpec extends SpecClass {
   behavior of "Compressror"
 
-  val db = new VerifyData("./paqFe/verify/db/all")
+  val db = new VerifyData("./verify/db/all")
   for(line <- db.data) {
     val test_name = line(0)
     val input_file = line(1)

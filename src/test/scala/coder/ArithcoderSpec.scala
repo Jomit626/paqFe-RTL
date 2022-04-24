@@ -51,7 +51,7 @@ class ArithCoderSpec
     with ChiselScalatestTester {
   behavior of "ArithCoder"
 
-  val db = new VerifyData("./paqFe/verify/db/coder")
+  val db = new VerifyData("./verify/db/coder")
   for(line <- db.data) {
     val test_name = line(0)
     val input_file = line(1)
@@ -59,7 +59,7 @@ class ArithCoderSpec
 
     it should "match software model with data: " + test_name in {
       test(new ArithCoder)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       
         dutTestInit(c)
         dutTest(c, input_file, output_file)
@@ -69,7 +69,7 @@ class ArithCoderSpec
 
     it should "tolerate throttling with data: " + test_name in {
       test(new ArithCoder)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       
         dutTestInit(c)
         dutTest(c, input_file, output_file, true)
@@ -80,7 +80,7 @@ class ArithCoderSpec
 
   it should "take multiple streams without reset between and output currect data" in {
     test(new ArithCoder)
-      .withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { c =>
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       dutTestInit(c)
       for(line <- db.data) {
         val test_name = line(0)
