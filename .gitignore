@@ -361,3 +361,7 @@ sim/axsim.sh
 
 # generated files
 genrtl
+
+# verify data
+verify/data
+verify/db
