@@ -7,7 +7,7 @@ class MixerParameter(val nFeatures: Int = 75,  val nHidden: Int = 8) {
   val XWidth = 12.W
   val lossWidth = 18.W
 
-  val VecDotMACNum = 2  // TODO: fix bug when ii=1
+  val VecDotMACNum = 4
   val VecDotII = (nFeatures + VecDotMACNum - 1) / VecDotMACNum
   
   val VecScaleSubMSNum = VecDotMACNum

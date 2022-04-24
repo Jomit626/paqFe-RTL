@@ -45,7 +45,7 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
   val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency)
   val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency)
   val notFirst = RegEnable(~last, false.B, probValid)
-  val prob = if(forceFirstProbEven) RegNext(Mux(notFirst, Squash(probStrech), 2048.U)) else RegNext(Squash(probStrech))
+  val prob = if(forceFirstProbEven) Mux(notFirst, RegNext(Squash(probStrech)), 2048.U) else RegNext(Squash(probStrech))
 
   val lossCalculationLatency = 1
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
