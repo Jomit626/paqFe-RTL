@@ -37,11 +37,16 @@ public:
     C4 = (C & 0xFFFFFFFF) << 5;
     C5 = (C & 0xFFFFFFFFFF) << 5;
     
-    if (byte>=65 && byte<=90)
+    bool isWord = false;
+    if (byte>=65 && byte<=90) {
       byte += 32;
+      isWord = true;
+    } else if ((byte>=97 && byte<=122)) {
+      isWord = true;
+    }
     
-    if ((byte>=97 && byte<=122)) {
-      CWord = ((CWord + byte) * (7 << 3));
+    if (isWord) {
+      CWord = (CWord ^ byte) << 5;
     } else {
       CWord = 0;
     }
@@ -68,8 +73,8 @@ public:
     H2 = tab_hashing<21, Parent::O2AddrWidth0>(O2HashTab, C2) & Parent::O2Mask;
     H3 = tab_hashing<29, Parent::O3AddrWidth0>(O3HashTab, C3) & Parent::O3Mask;
     H4 = tab_hashing<37, Parent::O4AddrWidth0>(O4HashTab, C4) & Parent::O4Mask;
-    H5 = tab_hashing<45, Parent::O4AddrWidth0>(O4HashTab, C5) & Parent::O4Mask;
-    HWord = (CWord ^ (CWord >> 32) ^ (CWord >> 16)) & OWordMask;
+    H5 = tab_hashing<45, Parent::O5AddrWidth0>(O5HashTab, C5) & Parent::O4Mask;
+    HWord = (CWord ^ (CWord >> 32) ^ (CWord >> 16)) & Parent::OWordMask;
   }
 
 
@@ -87,10 +92,10 @@ public:
     uint8_t nibble0 = (byte >> 4) & 0xF;
     uint8_t nibble1 = byte & 0xF;
 
-    fprintf(gfout, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", nibble0, H1, H2, H3, H4, H5, HWord, C1 & 0xFF, C2 & 0xFF, C3 & 0xFF, C4 & 0xFF, C5 & 0xFF, CWord & 0xFF);
+    fprintf(gfout, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", nibble0, H1, H2, H3, H4, H5, HWord, C1 & 0xFF, C2 & 0xFF, C3 & 0xFF, C4 & 0xFF, C5 & 0xFF, CWord & 0xFF);
     updateContextNibble1(nibble0);
 
-    fprintf(gfout, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", nibble1, H1, H2, H3, H4, H5, HWord, C1 & 0xFF, C2 & 0xFF, C3 & 0xFF, C4 & 0xFF, C5 & 0xFF, CWord & 0xFF);
+    fprintf(gfout, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", nibble1, H1, H2, H3, H4, H5, HWord, C1 & 0xFF, C2 & 0xFF, C3 & 0xFF, C4 & 0xFF, C5 & 0xFF, CWord & 0xFF);
     updateContextNibble0(nibble1, byte);
   }
 };

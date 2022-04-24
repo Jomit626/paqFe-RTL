@@ -22,6 +22,8 @@ class OrdersContextTest extends Module {
     val o2Out = DecoupledIO(new NibbleCtxBundle(16))
     val o3Out = DecoupledIO(new NibbleCtxBundle(16))
     val o4Out = DecoupledIO(new NibbleCtxBundle(17))
+    val o5Out = DecoupledIO(new NibbleCtxBundle(17))
+    val owOut = DecoupledIO(new NibbleCtxBundle(17))
   })
 
   val byte2nibble = Module(new Byte2Nibble(1))
@@ -34,11 +36,13 @@ class OrdersContextTest extends Module {
   io.o2Out <> contextGen.io.o2Out
   io.o3Out <> contextGen.io.o3Out
   io.o4Out <> contextGen.io.o4Out
+  io.o5Out <> contextGen.io.o5Out
+  io.owOut <> contextGen.io.owOut
 }
 
 class OrdersCtxSpec extends SpecClass {
   behavior of "OrdersCtx"
-  val db = new VerifyData("./paqFe/verify/db/ordersctx")
+  val db = new VerifyData("./verify/db/ordersctx")
   for(line <- db.data) {
     val data_name = line(0)
     val input_file = line(1)
@@ -84,7 +88,7 @@ implicit class OrdersCtxDUT(c: OrdersContextTest) {
     c.io.in.initSource()
     c.io.in.setSourceClock(c.clock)
 
-    Seq(c.io.o1Out, c.io.o2Out, c.io.o3Out, c.io.o4Out).foreach { out =>
+    Seq(c.io.o1Out, c.io.o2Out, c.io.o3Out, c.io.o4Out, c.io.o5Out, c.io.owOut).foreach { out =>
       out.initSink()
       out.setSinkClock(c.clock)
     }
@@ -114,6 +118,10 @@ implicit class OrdersCtxDUT(c: OrdersContextTest) {
         expectOut(data, c.io.o3Out, 3, throttle, 16)
       }.fork {
         expectOut(data, c.io.o4Out, 4, throttle, 17)
+      }.fork {
+        expectOut(data, c.io.o5Out, 5, throttle, 17)
+      }.fork {
+        expectOut(data, c.io.owOut, 6, throttle, 17)
       }
     }
 
@@ -125,7 +133,7 @@ implicit class OrdersCtxDUT(c: OrdersContextTest) {
     for((line, i) <- data.zipWithIndex) {
       val nibble = line(0)
       val ctx = line(idx)
-      val chk = line(idx + 4)
+      val chk = line(idx + 6)
       out.expectDequeue(bd.Lit(
         _.context -> ctx.U,
         _.nibble -> nibble.U,
