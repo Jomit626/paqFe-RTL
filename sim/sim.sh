@@ -7,7 +7,17 @@ cd $PROJ_FOLDER/sim
 
 mkdir -p tmp
 
-for line in $(cat $PROJ_FOLDER/paqFe/verify/db/all)
+echo Compiling module
+# we need rand value in reg at beginning so that vivado xsim would no assign them to X.
+xelab -a \
+      -d PRINTF_COND=1 \
+      -d RANDOMIZE_REG_INIT=1 \
+      -d RANDOMIZE_MEM_INIT=1 \
+      -prj sim.proj -s sim default.tb \
+      --nolog -O3
+echo Start Sim
+
+for line in $(cat $PROJ_FOLDER/verify/db/all)
 do
   line=(${line//,/ })
 
@@ -15,18 +25,9 @@ do
   input=${line[1]}
   output=${line[2]}
 
-  echo Compiling module
-  # we need rand value in reg at beginning so that vivado xsim would no assign they to X.
-  xelab -a \
-        -d PRINTF_COND=1 \
-        -d INPUT_FILE=\"$input\" \
-        -d OUTPUT_FILE=\"tmp/$test_name\" \
-        -d RANDOMIZE_REG_INIT=1 \
-        -d RANDOMIZE_MEM_INIT=1 \
-        -prj sim.proj -s sim default.tb \
-        --nolog -O3 >tmp/xelab.log
-  echo Start Sim
-  ./axsim.sh
+  ./axsim.sh \
+    --testplusarg inputfile=$input \
+    --testplusarg outputfile=tmp/$test_name
   
   for i in {0..7}
   do

@@ -166,7 +166,7 @@ class LossCalPE()(implicit p : MixerParameter) extends Module {
   val bit = RegEnable(io.P.bits.bit, probLoad)
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
-  val lr = 7.U // TODO: Learning rate
+  val lr = 31.U // TODO: Learning rate
   val lossCal = (probExpect - prob).asSInt * lr
   val loss = lossCal
 

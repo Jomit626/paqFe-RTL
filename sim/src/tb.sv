@@ -1,6 +1,6 @@
-`define MODLE_PEIROD 12.500
+`define MODLE_PEIROD 6.2500
 `define MIXER_PEIROD 3.3333
-`define CODER_PEIROD 25.000
+`define CODER_PEIROD 12.500
 
 module file2stream (
   input wire clk,
@@ -13,6 +13,7 @@ module file2stream (
   
   integer fin;
   reg [7:0] data_next;
+  string input_filepath;
   initial begin
     valid = 0;
     data = 0;
@@ -21,7 +22,13 @@ module file2stream (
 
   always @(posedge rst_n) begin
     if(rst_n) begin
-      fin = $fopen(`INPUT_FILE, "rb");
+      if (!$value$plusargs("inputfile=%s", input_filepath)) begin
+        input_filepath = "sim.sh";
+      end
+
+      $display("Sim Input File: %s", input_filepath);
+
+      fin = $fopen(input_filepath, "rb");
       if(fin == -1) begin
         $error("failed to open output file.");
       end
@@ -102,13 +109,18 @@ module stream2manyfile (
   integer f, i;
   integer fout[7:0];
 
-  string output_file = `OUTPUT_FILE;
+  string output_file;
   initial begin
     ready = 0;
   end
 
   always @(posedge rst_n) begin
     if(rst_n) begin
+      if (!$value$plusargs("outputfile=%s", output_file)) begin
+        output_file = "tmp/sim.sh";
+      end
+
+      $display("Sim Output file: %s", output_file);
 
       output_file = {output_file,".0"};
       for(i=0;i<8;i=i+1) begin
@@ -119,8 +131,6 @@ module stream2manyfile (
 
         if(f == -1)
           $error("failed to open output file.");
-
-        $display("output file: %s", output_file);
       end
 
       ready = 1;

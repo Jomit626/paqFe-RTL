@@ -14,7 +14,7 @@ DB_FILE=$DB_FOLDER/$DB_NAME
 mkdir -p $DB_FOLDER
 rm -f $DB_FILE
 
-for file in $(ls $DATA_FOLDER)
+for file in $(ls -Sr $DATA_FOLDER)  # small first
 do  
   INPUT_FILE="$(realpath $DATA_FOLDER/$file)"
   OUTPUT_FILE="$(realpath $DB_FOLDER/$DB_NAME-$file)"

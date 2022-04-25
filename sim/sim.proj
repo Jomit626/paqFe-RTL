@@ -1,2 +1,2 @@
-verilog default "src/Compressor.v"
+verilog default "../genrtl/CompressrorWrapped.v"
 sv default "src/tb.sv"

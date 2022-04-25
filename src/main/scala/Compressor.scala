@@ -45,7 +45,7 @@ class Compressor extends RawModule {
   val model_rst = IO(Input(Bool()))
   
   val model_in = IO(Flipped(DecoupledIO(new ByteBundle())))
-  val model_status = IO(new StatusBundle)
+  val model_status = IO(Output(new StatusBundle))
   
   val mixer_clk = IO(Input(Clock()))
   val mixer_rst = IO(Input(Bool()))
@@ -55,22 +55,25 @@ class Compressor extends RawModule {
   
   val coder_out = IO(DecoupledIO(new ByteIdxBundle()))
   
-  implicit val p = new MixerParameter(4, 1)
   var orders: Orders = null
+  withClockAndReset(model_clk, model_rst) {
+    orders = Module(new Orders())
+  }
+  implicit val p = new MixerParameter(orders.nProb, orders.nCtx)
   var mixers: Seq[Mixer] = null
   var gatterScatter: ProbGatterScatter = null
   var coders : Seq[ArithCoder] = null
   
   withClockAndReset(model_clk, model_rst) {
     val byte2nibble = Module(new Byte2Nibble(1))
+    
     gatterScatter = Module(new ProbGatterScatter())
-    orders = Module(new Orders())
     
     byte2nibble.io.in <> model_in
     orders.io.in <> byte2nibble.io.out(0)
     
     gatterScatter.io.in <> orders.io.outProb
-    gatterScatter.io.inCtx <> VecInit(Seq(orders.io.outCtx))
+    gatterScatter.io.inCtx <> orders.io.outCtx
     
     model_status := orders.io.status
   }
@@ -169,12 +172,15 @@ object GetCompressorVerilog extends App {
   (new ChiselStage).execute(
   Array(
     "-X", "verilog", 
-    "--target-dir", "sim/src"), 
-  Seq(ChiselGeneratorAnnotation(() => new Compressor())))
+    "--target-dir", "genrtl"), 
+  Seq(ChiselGeneratorAnnotation(() => new CompressrorWrapped())))
+}
+
+object GetTestVerilog extends App {
   (new ChiselStage).execute(
   Array(
     "-X", "verilog", 
     "--target-dir", "genrtl"), 
-  Seq(ChiselGeneratorAnnotation(() => new CompressrorWrapped())))
+  Seq(ChiselGeneratorAnnotation(() => new Orders())))
 }
 
