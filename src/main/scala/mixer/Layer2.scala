@@ -50,7 +50,7 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
   val lossCalculationLatency = 1
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
-  val lr = 3.U // TODO: Learning rate
+  val lr = 4.U
   val loss = RegNext((probExpect - prob).asSInt * lr)
 
   val lossAccumulateValid = ShiftRegister(probValid, lossCalculationLatency)

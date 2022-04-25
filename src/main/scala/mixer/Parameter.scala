@@ -16,5 +16,5 @@ class MixerParameter(val nFeatures: Int = 75,  val nHidden: Int = 8) {
   def L1WeightInitVal = ((1 << 16) / nFeatures - 1).S(WeightWidth)
   def L2WeightInitVal = ((1 << 16) / nHidden - 1).S(WeightWidth)
 
-  val L2BatchSize = 1024
+  val L2BatchSize = 128
 }
