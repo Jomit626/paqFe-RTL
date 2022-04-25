@@ -45,7 +45,7 @@ class RamInitUnit(AddrWidth : Int, delay: Int = 2) extends Module {
     val wen = Output(Bool())
     val waddr = Output(UInt(AddrWidth.W))
 
-    val status = new StatusBundle
+    val status = Output(new StatusBundle)
   })
 
   val initDone = RegInit(false.B)

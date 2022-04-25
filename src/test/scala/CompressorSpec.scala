@@ -120,7 +120,7 @@ class CompressorTest extends Module {
     val in = Flipped(DecoupledIO(new ByteBundle()))
     val out = DecoupledIO(new ByteIdxBundle())
 
-    val status = new StatusBundle
+    val status = Output(new StatusBundle)
   })
 
   val inst = Module(new Compressor())

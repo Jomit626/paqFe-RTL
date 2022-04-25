@@ -2,7 +2,7 @@
 set -e
 
 PROJ_FOLDER="$(realpath $(dirname "$0")/..)"
-DATA_FOLDER="$PROJ_FOLDER/test/data"
+DATA_FOLDER="$PROJ_FOLDER/paqFe/test/data"
 VERIFY_DATA_FOLDER="$PROJ_FOLDER/verify/data"
 
 mkdir -p $VERIFY_DATA_FOLDER

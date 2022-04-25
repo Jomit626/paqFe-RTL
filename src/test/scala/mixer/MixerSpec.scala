@@ -134,7 +134,7 @@ implicit class MixerDUT(c: MixerTest)(implicit p: MixerParameter) {
             ))
 
             if(throttle) {
-              c.clock.step(Random.between(0, 32))
+              c.clock.step(Random.between(0, 4))
             }
           }
         }

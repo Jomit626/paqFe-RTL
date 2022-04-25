@@ -16,10 +16,11 @@ class ContextMapInputBundle(CtxWidth : Int) extends Bundle {
   val last = Bool()
 }
 
-class ContextMapOutputBundle extends Bundle {
+class ContextMapOutputBundle() extends Bundle {
   val nibble = UInt(4.W)
   val probs = Vec(4, UInt(12.W))
   val hit = Bool()
+  val context = UInt()
   val last = Bool()
 }
 
@@ -43,7 +44,7 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
     val in = Flipped(DecoupledIO(new ContextMapCASBundle(CtxWidth)))
     val out = DecoupledIO(new ContextMapCASBundle(CtxWidth))
 
-    val status = new StatusBundle
+    val status = Output(new StatusBundle)
   })
   val latency = 2
   
@@ -157,7 +158,7 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new NibbleCtxBundle(CtxWidth)))
 
-    val out = DecoupledIO(new ContextMapOutputBundle)
+    val out = DecoupledIO(new ContextMapOutputBundle())
 
     val status = Output(new StatusBundle)
   })
@@ -187,6 +188,7 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
     val o = Wire(new ContextMapOutputBundle())
     o.nibble := i.nibble
     o.last := i.last
+    o.context := i.context
     o.probs := i.states.map(StaticStateMap(_))
     o.hit := i.hit
     o
@@ -197,11 +199,12 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
 }
 
 class ContextMapsToModel(n: Int) extends Module {
+  val nCtx = 6
   val io = IO(new Bundle {
     val in = Vec(n, Flipped(DecoupledIO(new ContextMapOutputBundle)))
 
     val out = Vec(n, Vec(8, DecoupledIO(new BitProbBundle())))
-    val outCtx = Vec(8, DecoupledIO(UInt(log2Ceil(n + 1).W)))
+    val outCtx = Vec(nCtx, Vec(8, DecoupledIO(UInt(8.W))))
   })
 
   // ctrl singal
@@ -210,9 +213,53 @@ class ContextMapsToModel(n: Int) extends Module {
   val outValid1 = Wire(Bool())
   
   val first = RegInit(true.B)
+  val reload = WireInit(false.B)
 
   // data path
-  val ctx = PopCount(io.in.map(_.bits.hit))
+  val salt = RegInit(0.U(2.W))
+  val hitSeq = io.in.map(_.bits.hit & ~first)
+  val hitVec = Cat(hitSeq)
+  val prevHitVec = RegInit(0.U(hitVec.getWidth.W))
+  val prevHitVec2 = RegInit(0.U(hitVec.getWidth.W))
+
+  val wordRunLevel = Wire(UInt(6.W))
+  val prevWordRunLevel = RegInit(0.U(6.W))
+  val highRunLevel = RegInit(0.U(5.W))
+  val highRunLevelNxt = Wire(UInt(5.W))
+  when(hitSeq(4)) {
+    highRunLevelNxt := Mux(highRunLevel<31.U, highRunLevel +& 1.U, highRunLevel)
+  }.otherwise{
+    highRunLevelNxt := 0.U
+  }
+
+  val wordHit = hitSeq(5) && io.in(5).bits.context =/= 0.U // TODO: remove hand write 5
+  wordRunLevel := Cat(prevWordRunLevel, wordHit.asUInt)
+
+  val ctxs = VecInit(Seq(
+    Cat(hitVec, salt),
+    Cat(prevHitVec & hitVec, salt),
+    Cat(prevHitVec2 & hitVec, salt),
+    Cat(wordRunLevel, salt),
+    Cat(prevWordRunLevel, salt),
+    Cat(highRunLevelNxt, salt)
+  ))
+
+  when(outValid1 || outValid0) {
+    when(outValid1) {salt := salt +& outValid1}
+    prevHitVec := hitVec
+    prevHitVec2 := prevHitVec
+
+    prevWordRunLevel := wordRunLevel
+    highRunLevel := highRunLevelNxt
+  }
+
+  when(reload) {
+    salt := 0.U
+    prevHitVec := 0.U
+    prevHitVec2 := 0.U
+    prevWordRunLevel := 0.U
+    highRunLevel := 0.U
+  }
 
   for(j <- 0 until 4) {
     for(i <- 0 until n) {
@@ -229,15 +276,14 @@ class ContextMapsToModel(n: Int) extends Module {
       if(j == 0)
         io.out(i)(j).bits.prob := Mux(first, 2048.U, io.in(i).bits.probs(j))
     }
-    if(j == 0) {
-      io.outCtx(j).bits :=  Mux(first, 0.U, ctx)
-    } else {
-      io.outCtx(j).bits :=  ctx
-    }
-    io.outCtx(j).valid := outValid0
 
-    io.outCtx(j + 4).bits := ctx
-    io.outCtx(j + 4).valid := outValid1
+    for(i <- 0 until nCtx) {
+      io.outCtx(i)(j).bits := (if(j == 0) Mux(first, 0.U, ctxs(i)) else ctxs(i))
+      io.outCtx(i)(j).valid := outValid0
+
+      io.outCtx(i)(j + 4).bits := ctxs(i)
+      io.outCtx(i)(j + 4).valid := outValid1
+    }
   }
 
   for(i <- 0 until n) {
@@ -250,6 +296,7 @@ class ContextMapsToModel(n: Int) extends Module {
   }
   when(~first && io.out(0)(4).fire && io.out(0)(4).bits.last) {
     first := true.B
+    reload := true.B
   }
 
   val outSel = RegInit(false.B)
@@ -259,8 +306,8 @@ class ContextMapsToModel(n: Int) extends Module {
 
   val outHalf0 = io.out.map(_.slice(0, 4)).reduce(_ ++ _)
   val outHalf1 = io.out.map(_.slice(4, 8)).reduce(_ ++ _)
-  val outCtxhalf0 = io.outCtx.slice(0, 4)
-  val outCtxhalf1 = io.outCtx.slice(4, 8)
+  val outCtxhalf0 = io.outCtx.map(_.slice(0, 4)).reduce(_ ++ _)
+  val outCtxhalf1 = io.outCtx.map(_.slice(4, 8)).reduce(_ ++ _)
 
   val outHalf0Ready = outHalf0.map(_.ready).reduce(_ && _)
   val outHalf1Ready = outHalf1.map(_.ready).reduce(_ && _)

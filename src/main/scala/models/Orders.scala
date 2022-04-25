@@ -182,14 +182,17 @@ class OrdersContext extends Module {
   io.owOut.valid := outValid & allReady
 }
 
-class Orders extends Module {
+class Orders extends Module with Model {
+  val nProb = 6
+  val nCtx = 6
+
   val io = IO(new Bundle{
     val in = Flipped(DecoupledIO(new NibbleBundle()))
 
-    val outProb = Vec(4, Vec(8, DecoupledIO(new BitProbBundle())))
-    val outCtx = Vec(8, DecoupledIO(UInt(3.W)))
+    val outProb = Vec(nProb, Vec(8, DecoupledIO(new BitProbBundle())))
+    val outCtx = Vec(nCtx, Vec(8, DecoupledIO(UInt(8.W))))
 
-    val status = new StatusBundle
+    val status = Output(new StatusBundle)
   })
 
   val contextGen = Module(new OrdersContext())
@@ -198,27 +201,35 @@ class Orders extends Module {
   val o2CtxMap = Module(new ContextMap(16))
   val o3CtxMap = Module(new ContextMap(16))
   val o4CtxMap = Module(new ContextMap(17))
-  val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap)
+  val o5CtxMap = Module(new ContextMap(17))
+  val owCtxMap = Module(new ContextMap(17))
+  val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap, o5CtxMap, owCtxMap)
 
   val maxLatency = contextMaps.map(_.latency).reduce(_ max _)
-  val convter = Module(new ContextMapsToModel(4))
+  val convter = Module(new ContextMapsToModel(nProb))
 
   io.in <> contextGen.io.in
   o1CtxMap.io.in <> Queue(contextGen.io.o1Out, maxLatency - o1CtxMap.latency)
   o2CtxMap.io.in <> Queue(contextGen.io.o2Out, maxLatency - o2CtxMap.latency)
-  o3CtxMap.io.in <> Queue(contextGen.io.o3Out, maxLatency - o2CtxMap.latency)
-  o4CtxMap.io.in <> contextGen.io.o4Out
+  o3CtxMap.io.in <> Queue(contextGen.io.o3Out, maxLatency - o3CtxMap.latency)
+  o4CtxMap.io.in <> Queue(contextGen.io.o4Out, maxLatency - o4CtxMap.latency)
+  o5CtxMap.io.in <> Queue(contextGen.io.o5Out, maxLatency - o5CtxMap.latency)
+  owCtxMap.io.in <> Queue(contextGen.io.owOut, maxLatency - owCtxMap.latency)
 
   convter.io.in(0) <> Queue(o1CtxMap.io.out, 4)
   convter.io.in(1) <> Queue(o2CtxMap.io.out, 4)
   convter.io.in(2) <> Queue(o3CtxMap.io.out, 4)
   convter.io.in(3) <> Queue(o4CtxMap.io.out, 4)
+  convter.io.in(4) <> Queue(o5CtxMap.io.out, 4)
+  convter.io.in(5) <> Queue(owCtxMap.io.out, 4)
 
   for(j <- 0 until 8) {
-    for(i <- 0 until io.outProb.length) {
+    for(i <- 0 until nProb) {
       io.outProb(i)(j) <> Queue(convter.io.out(i)(j)) // TODO: comb loop
     }
-    io.outCtx(j) <> Queue(convter.io.outCtx(j))
+    for(i <- 0 until nCtx) {
+      io.outCtx(i)(j) <> Queue(convter.io.outCtx(i)(j))
+    }
   }
   
   io.status := RegNext(StatusMerge(contextMaps.map(_.io.status)))
