@@ -17,6 +17,7 @@ function(add_verify_db DB_NAME)
 endfunction(add_verify_db name)
 
 add_verify_db(coder)
+add_verify_db(crc)
 add_verify_db(stateshift)
 add_verify_db(staticstatemap)
 add_verify_db(ordersctx)
