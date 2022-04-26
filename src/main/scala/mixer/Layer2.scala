@@ -19,14 +19,17 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
     val dw = Output(Vec(p.nHidden, SInt(p.WeightWidth)))
   })
 
-  val vecDotLatency = 3
+  def sum(a: SInt, b: SInt) = a + b
+  def layerOp(i: Int, x: SInt) = if(i % 2 == 0) RegNext(x) else x
+  val sumLatency = log2Ceil(p.VecDotMACNum) / 2
+  val vecDotLatency = 2 + sumLatency + 1
+
   val x = RegEnable(io.in.bits.x, io.in.valid)
   val w = RegEnable(io.in.bits.w, io.in.valid)
   val mul = x zip w map {case (x, w) =>
     RegNext(x * w)
   }
-  val dot = RegNext(mul.reduce(_ + _) >> 16)
-  //val dot = RegNext(TreeReduce[SInt](mul, (a, b) => a + b))
+  val dot = TreeReduce[SInt](mul, sum, layerOp(_,_)) >> 16
 
   val xQueue = Module(new Queue(Vec(p.nHidden, SInt(p.XWidth)), 8, useSyncReadMem = true))
   xQueue.io.enq.valid := io.in.valid
@@ -35,12 +38,12 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
     assert(xQueue.io.enq.ready, "FIFO full!")
   }
 
-  val probSquashLatency = 1
   val dotGt2047 = dot > 2047.S
   val dotLtn2048 = dot < -2048.S
   val probStrech = Wire(SInt(p.XWidth))
-  probStrech := Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot))
-
+  probStrech := RegNext(Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot)))
+  
+  val probSquashLatency = 1
   val probValid = ShiftRegister(io.in.valid, vecDotLatency + probSquashLatency)
   val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency)
   val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency)

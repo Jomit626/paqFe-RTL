@@ -49,6 +49,10 @@ object DecoupledSkidBuf {
   }
 }
 
+object DecoupledFullRegSlice {
+  def apply[T <: Data](in: DecoupledIO[T]) = DecoupledHalfRegSlice(DecoupledSkidBuf(in))
+}
+
 object DecoupledSimpleGatter {
   def apply[T <: Data](in: Vec[DecoupledIO[T]]) : DecoupledIO[Vec[T]] = {
     val out = Wire(Decoupled(Vec(in.length, chiselTypeOf(in.head.bits))))

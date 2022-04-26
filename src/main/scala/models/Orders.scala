@@ -216,12 +216,12 @@ class Orders extends Module with Model {
   o5CtxMap.io.in <> Queue(contextGen.io.o5Out, maxLatency - o5CtxMap.latency)
   owCtxMap.io.in <> Queue(contextGen.io.owOut, maxLatency - owCtxMap.latency)
 
-  convter.io.in(0) <> Queue(o1CtxMap.io.out, 4)
-  convter.io.in(1) <> Queue(o2CtxMap.io.out, 4)
-  convter.io.in(2) <> Queue(o3CtxMap.io.out, 4)
-  convter.io.in(3) <> Queue(o4CtxMap.io.out, 4)
-  convter.io.in(4) <> Queue(o5CtxMap.io.out, 4)
-  convter.io.in(5) <> Queue(owCtxMap.io.out, 4)
+  convter.io.in(0) <> Queue(o1CtxMap.io.out)
+  convter.io.in(1) <> Queue(o2CtxMap.io.out)
+  convter.io.in(2) <> Queue(o3CtxMap.io.out)
+  convter.io.in(3) <> Queue(o4CtxMap.io.out)
+  convter.io.in(4) <> Queue(o5CtxMap.io.out)
+  convter.io.in(5) <> Queue(owCtxMap.io.out)
 
   for(j <- 0 until 8) {
     for(i <- 0 until nProb) {

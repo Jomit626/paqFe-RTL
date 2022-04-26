@@ -2,12 +2,12 @@ package paqFe.mixer
 
 import chisel3._
 
-class MixerParameter(val nFeatures: Int = 75,  val nHidden: Int = 8) {
+class MixerParameter(val nFeatures: Int,  val nHidden: Int) {
   val WeightWidth = 17.W
   val XWidth = 12.W
   val lossWidth = 18.W
 
-  val VecDotMACNum = 4
+  val VecDotMACNum = 6
   val VecDotII = (nFeatures + VecDotMACNum - 1) / VecDotMACNum
   
   val VecScaleSubMSNum = VecDotMACNum

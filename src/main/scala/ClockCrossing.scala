@@ -30,7 +30,7 @@ class Model2MixerCrossing(implicit p: MixerParameter) extends RawModule {
     asyncQueue.io.deq_clock := io.mixer_clk
     asyncQueue.io.deq_reset := io.mixer_rst
     withClockAndReset(io.mixer_clk, io.mixer_rst) {
-      DecoupledSkidBuf(DecoupledHalfRegSlice(asyncQueue.io.deq)) <> io.out(i)
+      DecoupledFullRegSlice(asyncQueue.io.deq) <> io.out(i)
     }
   }
 }
@@ -56,7 +56,7 @@ class Mixer2CoderCrossing extends RawModule {
     asyncQueue.io.deq_clock := io.coder_clk
     asyncQueue.io.deq_reset := io.coder_rst
     withClockAndReset(io.coder_clk, io.coder_rst) {
-      DecoupledSkidBuf(DecoupledHalfRegSlice((asyncQueue.io.deq))) <> io.out(i)
+      DecoupledFullRegSlice((asyncQueue.io.deq)) <> io.out(i)
     }
   }
 }

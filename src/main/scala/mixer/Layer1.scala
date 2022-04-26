@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 
 import paqFe.types._
-import paqFe.util.RamInitUnit
+import paqFe.util._
 
 class PredictUpdateEngine()(implicit p : MixerParameter) extends Module {
   val io = IO(new Bundle {
@@ -178,22 +178,26 @@ class MixerLayer1(implicit p: MixerParameter) extends Module {
     val status = Output(new StatusBundle())
   })
 
-  val pes = Seq.fill(p.nHidden) {Module(new MixerLayer1PE)}
-  val allReady = pes.map(_.io.in.ready).reduce(_ && _)
-  pes.zipWithIndex.foreach{ case(m, i) =>
+  val PEs = Seq.fill(p.nHidden) {Module(new MixerLayer1PE)}
+  val PEsIn = Seq.fill(p.nHidden) {Wire(chiselTypeOf(PEs.head.io.in))}
 
-    m.io.in.bits.bit := io.in.bits.bit
-    m.io.in.bits.last := io.in.bits.last
-    m.io.in.bits.ctx := io.in.bits.ctx(i)
-    m.io.in.bits.x := io.in.bits.x
-    m.io.in.valid := io.in.valid && allReady
+  val allReady = PEsIn.map(_.ready).reduce(_ && _)
 
-    io.out(i) := m.io.x
+  for(i <- 0 until PEs.length) {
+    PEsIn(i).bits.bit := io.in.bits.bit
+    PEsIn(i).bits.last := io.in.bits.last
+    PEsIn(i).bits.ctx := io.in.bits.ctx(i)
+    PEsIn(i).bits.x := io.in.bits.x
+    PEsIn(i).valid := io.in.valid && allReady
+
+    PEs(i).io.in <> DecoupledFullRegSlice(PEsIn(i))
+
+    io.out(i) := PEs(i).io.x
   }
 
   io.in.ready := allReady
 
-  io.status := StatusMerge(pes.map(_.io.status))
+  io.status := StatusMerge(PEs.map(_.io.status))
   
-  val latency = pes.last.latency
+  val latency = PEs.last.latency
 }

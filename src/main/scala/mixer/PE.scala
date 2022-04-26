@@ -73,19 +73,25 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
     m.io.reload := macReload
     m.io.ce := macCE
   }
-  val SquashLatency = 3 // TODO: retimming sum
 
-  val dot = TreeReduce[SInt](macs.map(_.io.acc), (a, b) => a + b) >> 16
+  // Sum
+  def sum(a: SInt, b: SInt) = a + b
+  def layerOp(i: Int, x: SInt) = if(i % 2 == 0) RegNext(x) else x
+  val sumLatency = log2Ceil(p.VecDotMACNum) / 2 + 1
+  val dot = TreeReduce[SInt](macs.map(_.io.acc), sum, layerOp(_,_)) >> 16
+  
   val dotGt2047 = dot > 2047.S
   val dotLtn2048 = dot < -2048.S
-
   val probStrech = Wire(SInt(p.XWidth))
-  probStrech := Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot))
+  probStrech := RegNext(Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot)))
+
+  // Squash
+  val SquashLatency = 1
   
   val prob = ShiftRegister(Squash(probStrech), SquashLatency)
   val x = ShiftRegister(probStrech, SquashLatency)
-  val bit = ShiftRegister(bit0, macs.last.latency + SquashLatency, macCE)
-  val last = ShiftRegister(last0, macs.last.latency + SquashLatency, macCE)
+  val bit = ShiftRegister(bit0, macs.last.latency + SquashLatency + sumLatency, macCE)
+  val last = ShiftRegister(last0, macs.last.latency + SquashLatency + sumLatency, macCE)
 
   // Ctrl singls gen
   val cntCE = Wire(Bool())
@@ -122,7 +128,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
   macReload := cnt === 0.U
   macCE := true.B
   
-  output := ShiftRegister(cntWrp, macs.last.latency + SquashLatency, resetData = false.B, en = true.B)
+  output := ShiftRegister(cntWrp, macs.last.latency + sumLatency + SquashLatency, resetData = false.B, en = true.B)
   
   // outputs
   io.in.ready := inIdle || (inWorking && cntWrp)
@@ -146,7 +152,7 @@ class PredictPE()(implicit p : MixerParameter) extends Module {
     assert(io.updateStrm.ready, "updateStrm FIFO full!")
   }
 
-  val latency = p.VecDotII + macs.last.latency + SquashLatency
+  val latency = p.VecDotII + macs.last.latency + sumLatency + SquashLatency
 }
 
 class LossCalPE()(implicit p : MixerParameter) extends Module {

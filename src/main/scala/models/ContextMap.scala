@@ -72,6 +72,7 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
 
   val nibble_dd = RegEnable(nibble_d, pipelineReady)
   val context_dd = RegEnable(context_d, pipelineReady)
+  val context_dd_dup = RegEnable(context_d, pipelineReady)
   val chk_dd = RegEnable(chk_d, pipelineReady)
   val last_dd = RegEnable(last_d, false.B, pipelineReady)
   val valid_dd = RegEnable(valid_d, false.B, pipelineReady)
@@ -83,7 +84,7 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
 
   // duel port, A write first, B read only
   val ram = Module(new TDPRamWFRO(UInt((16 * 8).W), LocalCtxWidth))
-  val ramInit = Module(new RamInitUnit(LocalCtxWidth))
+  val ramInit = Module(new RamInitUnit(LocalCtxWidth, 4))
 
   ram.io.enb := localValid && pipelineReady
   ram.io.addrb := context
@@ -103,17 +104,17 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
   val state0Nxt = StateShiftLut(state0, nibble_dd(3))
 
   val state1group = (2 until 4).map(lineBytes(_))
-  val state1OH = UIntToOH(nibble_dd(3))
+  val state1OH = RegEnable(UIntToOH(nibble_d(3)), pipelineReady)
   val state1 = Mux1H(state1OH, state1group)
   val state1Nxt = StateShiftLut(state1, nibble_dd(2))
 
   val state2group = (4 until 8).map(lineBytes(_))
-  val state2OH = UIntToOH(nibble_dd(3,2))
+  val state2OH = RegEnable(UIntToOH(nibble_d(3,2)), pipelineReady)
   val state2 = Mux1H(state2OH, state2group)
   val state2Nxt = StateShiftLut(state2, nibble_dd(1))
 
   val state3group = (8 until 16).map(lineBytes(_))
-  val state3OH = UIntToOH(nibble_dd(3,1))
+  val state3OH = RegEnable(UIntToOH(nibble_d(3,1)), pipelineReady)
   val state3 = Mux1H(state3OH, state3group)
   val state3Nxt = StateShiftLut(state3, nibble_dd(0))
 
@@ -124,7 +125,7 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
 
   ram.io.ena := (localValid_dd & pipelineReady) || ramInit.io.wen
   ram.io.wea := localValid_dd || ramInit.io.wen
-  ram.io.addra := Mux(ramInit.io.status.initDone, context_dd, ramInit.io.waddr)
+  ram.io.addra := Mux(ramInit.io.status.initDone, context_dd_dup, ramInit.io.waddr)
   ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt.asUInt, 0.U.asTypeOf(ram.io.dina))
   
   pipelineReady := io.out.ready
@@ -184,7 +185,7 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
     in.io.out <> out.io.in
   }
   
-  io.out <> DecoupledMap(DecoupledSkidBuf(PEs.last.io.out), {i: ContextMapCASBundle =>
+  io.out <> DecoupledFullRegSlice(DecoupledMap(DecoupledHalfRegSlice(DecoupledHalfRegSlice(DecoupledHalfRegSlice(PEs.last.io.out))), {i: ContextMapCASBundle =>
     val o = Wire(new ContextMapOutputBundle())
     o.nibble := i.nibble
     o.last := i.last
@@ -192,7 +193,7 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
     o.probs := i.states.map(StaticStateMap(_))
     o.hit := i.hit
     o
-  })
+  }))
   val latency = PEs.map(_.latency).reduce(_ + _)
 
   io.status := StatusMerge(PEs map (_.io.status))
