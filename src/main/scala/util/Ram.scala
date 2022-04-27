@@ -5,6 +5,51 @@ import chisel3.util._
 
 import paqFe.types.StatusBundle
 
+class SDPUltraRam[T <: Data](gen: T, width: Int) 
+  extends BlackBox(Map(
+    "ADDR_WIDTH" -> width,
+    "DATA_WIDTH" -> gen.getWidth)) with HasBlackBoxResource {
+
+  val io = IO(new Bundle {
+    val clock = Input(Clock())
+    val reset = Input(Bool())
+
+    val wea = Input(Bool())
+    val addra = Input(UInt(width.W))
+    val dina = Input(gen)
+
+    val enb = Input(Bool())
+    val addrb = Input(UInt(width.W))
+    val dob = Output(gen)
+  })
+
+    addResource("/ultraram.v")
+}
+
+class SDPRam[T <: Data](gen: T, width: Int) extends Module {
+  val io = IO(new Bundle {
+    val wea = Input(Bool())
+    val addra = Input(UInt(width.W))
+    val dina = Input(gen)
+
+    val enb = Input(Bool())
+    val addrb = Input(UInt(width.W))
+    val dob = Output(gen)
+  })
+
+  val mem = Mem(1 << width, gen)
+  when(io.wea) {
+    mem(io.addra) := io.dina
+  }otherwise {
+  }
+
+  val dob = Reg(gen)
+  when(io.enb) {
+    dob := mem(io.addrb)
+  }
+  io.dob := dob
+}
+
 class TDPRamWFRO[T <: Data](gen: T, width: Int) extends Module {
   val io = IO(new Bundle {
     val ena = Input(Bool())

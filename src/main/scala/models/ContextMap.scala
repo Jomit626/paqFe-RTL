@@ -35,7 +35,7 @@ class ContextMapCASBundle(CtxWidth : Int) extends Bundle {
   val last = Bool()
 }
 
-class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
+class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int, UseUltraRam: Boolean=false) extends Module {
   require(isPow2(CascadeNumber) && ID >= 0 && ID < CascadeNumber)
   val LocalBits = log2Ceil(CascadeNumber)
   val LocalCtxWidth = CtxWidth - LocalBits;
@@ -82,12 +82,10 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
   val harzared2 = context === context_dd && localValid && localValid_dd
   val harzared2_d = RegEnable(harzared2, false.B, pipelineReady)
 
-  // duel port, A write first, B read only
-  val ram = Module(new TDPRamWFRO(UInt((16 * 8).W), LocalCtxWidth))
   val ramInit = Module(new RamInitUnit(LocalCtxWidth, 4))
 
-  ram.io.enb := localValid && pipelineReady
-  ram.io.addrb := context
+  val ramEnb = localValid && pipelineReady
+  val ramAddrb = context
 
   ramInit.io.in.bits := last_dd & last_d
   ramInit.io.in.valid := valid_dd && pipelineReady
@@ -123,10 +121,41 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
 
   val lineNxt =  VecInit.tabulate(16) {i => Mux(update(i), dinBytes(i), lineBytes(i))}
 
-  ram.io.ena := (localValid_dd & pipelineReady) || ramInit.io.wen
-  ram.io.wea := localValid_dd || ramInit.io.wen
-  ram.io.addra := Mux(ramInit.io.status.initDone, context_dd_dup, ramInit.io.waddr)
-  ram.io.dina := Mux(ramInit.io.status.initDone, lineNxt.asUInt, 0.U.asTypeOf(ram.io.dina))
+  val ramData = UInt((16 * 8).W)
+  val ramEna = (localValid_dd & pipelineReady) || ramInit.io.wen
+  val ramWea = localValid_dd || ramInit.io.wen
+  val ramAddra = Mux(ramInit.io.status.initDone, context_dd_dup, ramInit.io.waddr)
+  val ramDina = Mux(ramInit.io.status.initDone, lineNxt.asUInt, 0.U.asTypeOf(ramData))
+  val ramDoa = Wire(chiselTypeOf(ramDina))
+  val ramDob = Wire(chiselTypeOf(ramDina))
+
+  if(UseUltraRam) {
+    val ram = Module(new SDPUltraRam(UInt((16 * 8).W), LocalCtxWidth))
+    ram.io.clock := clock
+    ram.io.reset := reset
+
+    ram.io.wea := ramWea
+    ram.io.addra := ramAddra
+    ram.io.dina := ramDina
+    ramDoa := RegEnable(ramDina, ramEna)
+    
+    ram.io.enb := ramEnb
+    ram.io.addrb := ramAddrb
+    ramDob := ram.io.dob
+  } else {
+    val ram = Module(new TDPRamWFRO(UInt((16 * 8).W), LocalCtxWidth))
+
+    ram.io.ena := ramEna
+    ram.io.wea := ramWea
+    ram.io.addra := ramAddra
+    ram.io.dina := ramDina
+    ramDoa := ram.io.doa
+    
+    ram.io.enb := ramEnb
+    ram.io.addrb := ramAddrb
+    ramDob := ram.io.dob
+  }
+
   
   pipelineReady := io.out.ready
 
@@ -134,9 +163,9 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
     when(harzared1) {
       dout := lineNxt
     }.elsewhen(harzared2_d) {
-      dout := ram.io.doa.asTypeOf(dout)
+      dout := ramDoa.asTypeOf(dout)
     }.otherwise{
-      dout := ram.io.dob.asTypeOf(dout)
+      dout := ramDob.asTypeOf(dout)
     }
   }
   val states = VecInit(Seq(state0, state1, state2, state3))
@@ -155,7 +184,7 @@ class ContextMapPE(CtxWidth: Int, CascadeNumber: Int, ID: Int) extends Module {
   io.status := ramInit.io.status
 }
 
-class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
+class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14, UseUltraRam: Boolean=false) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new NibbleCtxBundle(CtxWidth)))
 
@@ -166,7 +195,7 @@ class ContextMap(CtxWidth: Int, PECtxWidth: Int = 14) extends Module {
 
   val CascadeNumber = 1 << (CtxWidth - PECtxWidth)
   val PEs = Seq.tabulate(CascadeNumber){i =>
-    Module(new ContextMapPE(CtxWidth, CascadeNumber, i))
+    Module(new ContextMapPE(CtxWidth, CascadeNumber, i, UseUltraRam))
   }
   
   PEs.head.io.in <> DecoupledMap(io.in, {i: NibbleCtxBundle =>

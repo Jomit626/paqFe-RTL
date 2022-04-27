@@ -1,6 +1,6 @@
-`define MODLE_PEIROD 5.5555
-`define MIXER_PEIROD 3.8000
-`define CODER_PEIROD 11.111
+`define MODLE_PEIROD 5.88235
+`define MIXER_PEIROD 3.92156
+`define CODER_PEIROD 11.6747
 
 module file2stream (
   input wire clk,

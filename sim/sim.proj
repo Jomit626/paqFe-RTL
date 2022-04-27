@@ -1,2 +1,3 @@
 verilog default "../genrtl/CompressrorWrapped.v"
+verilog default "../genrtl/ultraram.v"
 sv default "src/tb.sv"

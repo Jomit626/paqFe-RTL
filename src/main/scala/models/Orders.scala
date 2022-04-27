@@ -198,11 +198,11 @@ class Orders extends Module with Model {
   val contextGen = Module(new OrdersContext())
   
   val o1CtxMap = Module(new ContextMap(12, 12))
-  val o2CtxMap = Module(new ContextMap(16))
-  val o3CtxMap = Module(new ContextMap(16))
-  val o4CtxMap = Module(new ContextMap(17))
-  val o5CtxMap = Module(new ContextMap(17))
-  val owCtxMap = Module(new ContextMap(17))
+  val o2CtxMap = Module(new ContextMap(16, 14))
+  val o3CtxMap = Module(new ContextMap(16, 14))
+  val o4CtxMap = Module(new ContextMap(17, 17, UseUltraRam = true))
+  val o5CtxMap = Module(new ContextMap(17, 17, UseUltraRam = true))
+  val owCtxMap = Module(new ContextMap(17, 17, UseUltraRam = true))
   val contextMaps = Seq(o1CtxMap, o2CtxMap, o3CtxMap, o4CtxMap, o5CtxMap, owCtxMap)
 
   val maxLatency = contextMaps.map(_.latency).reduce(_ max _)
