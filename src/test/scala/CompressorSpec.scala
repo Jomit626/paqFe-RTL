@@ -94,7 +94,7 @@ class CompressrorSpec extends SpecClass {
       .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         statusWaitInitDone(c.clock, c.io.status, 1 << 18)
-        c.test(input_file, output_file)
+        c.test(input_file, output_file, true)
       } 
     }
   }
@@ -109,7 +109,7 @@ class CompressrorSpec extends SpecClass {
         val output_file = line(2)
 
         statusWaitInitDone(c.clock, c.io.status, 1 << 18)
-        c.test(input_file, output_file)
+        c.test(input_file, output_file, true)
       }
     } 
   }
@@ -179,8 +179,7 @@ implicit class CompressorTestDUT(c: CompressorTest) {
         c.clock.step()
         if(randomThrottle) {
           c.io.out.ready.poke(false.B)
-          val t = Random.between(0, 128)
-          c.clock.step((t - 32) max 0)
+          c.clock.step(128)
           c.io.out.ready.poke(true.B)
         }
       }

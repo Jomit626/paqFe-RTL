@@ -28,8 +28,10 @@ class Mixer(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) ext
   l1.io.in.valid := io.in.valid && ~stall
   io.in.ready := l1.io.in.ready && ~stall
 
-  val l1tol2Queues = VecInit(l1.io.out.map{case out =>
-    val q = Module(new Queue(new XBitBundle(), 8))
+  val n = (l1.latency + p.VecDotII - 1) / p.VecDotII
+  val margin = 8
+  val l1tol2Queues = l1.io.out.map{case out =>
+    val q = Module(new Queue(new XBitBundle(), n + margin))
 
     q.io.enq.valid := out.valid
     q.io.enq.bits := out.bits
@@ -37,8 +39,10 @@ class Mixer(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) ext
       assert(q.io.enq.ready, "FIFO full")
     }
 
-    q.io.deq
-  })
+    q
+  }
+
+  stall := ~l1tol2Queues.map(_.io.count < margin.U).reduce(_ && _)
 
   def layer1ToLayer2(in: Vec[XBitBundle]): Layer2InputBundle = {
     val out = Wire(new Layer2InputBundle())
@@ -51,19 +55,10 @@ class Mixer(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) ext
     out
   }
 
-  l2.io.in <> DecoupledSimpleGatter(l1tol2Queues, layer1ToLayer2)
+  l2.io.in <> DecoupledSimpleGatter(VecInit(l1tol2Queues.map(_.io.deq)), layer1ToLayer2)
 
-  val outputQueueSize = 32
-  val maxExecSize = (l1.latency + l2.latency + p.VecDotII - 1) / p.VecDotII
-  require(outputQueueSize - (maxExecSize + 1) > 0)
-  val outputQueue = Module(new Queue(new BitProbBundle(), outputQueueSize, useSyncReadMem = true))
-  stall := RegNext(outputQueue.io.count > (outputQueueSize - (maxExecSize + 1)).U, false.B)
-
-  outputQueue.io.enq.valid := l2.io.out.valid
-  outputQueue.io.enq.bits := l2.io.out.bits
-  when(l2.io.out.valid) {
-    assert(outputQueue.io.enq.ready, "FIFO full!")
-  }
+  val outputQueue = Module(new Queue(new BitProbBundle(), 8, useSyncReadMem = true))
+  outputQueue.io.enq <> l2.io.out
 
   io.out <> outputQueue.io.deq
   io.status := l1.io.status

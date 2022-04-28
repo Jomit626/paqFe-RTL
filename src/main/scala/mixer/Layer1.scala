@@ -102,50 +102,16 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
 
   // harzard
   val n = (pe.latency + p.VecDotII - 1) / p.VecDotII
-  val shiftInFlightCtxs = Seq.fill(n) {Reg(UInt(8.W))}
-  val shiftInFlightValid = Seq.fill(n) {RegInit(false.B)}
-  val shiftInFlightCtxsDeq = WireInit(false.B)
-  val feedNext = Seq.tabulate(n) {i => 
-    if(i != n - 1) {
-      shiftInFlightValid(i) && (~shiftInFlightValid.slice(i, n).reduce(_ & _) || shiftInFlightCtxsDeq)
-    } else {
-      shiftInFlightCtxsDeq
-    }
-  }
-  val loadPrev = Seq.tabulate(n) {i => 
-    if(i != 0) {
-      feedNext(i - 1)
-    } else {
-      io.in.fire
-    }
-  }
-  for(i <- 0 until n) {
-    when(loadPrev(i)) {
-      shiftInFlightCtxs(i) := (if (i == 0) io.in.bits.ctx else shiftInFlightCtxs(i - 1))
-    }
+  val inFlightCtxsQueue = Module(new UniqueQueue(UInt(8.W), n))
 
-    when(loadPrev(i) && feedNext(i)) {
-      shiftInFlightValid(i) := true.B
-    }.elsewhen(loadPrev(i)) {
-      shiftInFlightValid(i) := true.B
-    }.elsewhen(feedNext(i)) {
-      shiftInFlightValid(i) := false.B
-    }
-  }
-
-  when(shiftInFlightCtxsDeq) {
-    assert(shiftInFlightValid.last)
-  }
-
-  val harzard = Seq.tabulate(n) {i => 
-    shiftInFlightValid(i) && shiftInFlightCtxs(i) === io.in.bits.ctx
-  }.reduce(_ || _)
-
-  io.in.ready := !harzard && pe.io.in.ready
-  pe.io.in.valid := !harzard && io.in.valid
+  inFlightCtxsQueue.io.enq.bits := io.in.bits.ctx
+  
+  io.in.ready := inFlightCtxsQueue.io.enq.ready && pe.io.in.ready
+  pe.io.in.valid := io.in.valid && inFlightCtxsQueue.io.enq.ready 
+  inFlightCtxsQueue.io.enq.valid := io.in.valid && pe.io.in.ready
 
   // weight write
-  writeAddr := shiftInFlightCtxs.last
+  writeAddr := inFlightCtxsQueue.io.deq.bits
   val writeBack = pe.io.Wu.valid
   val writeBackRound = Seq.tabulate(p.VecScaleSubRound) {i => RegInit(( i == 0).B)}
   writeBackRound.zipWithIndex foreach {case (r, i) => 
@@ -162,7 +128,7 @@ class MixerLayer1PE(implicit p: MixerParameter) extends Module {
     }
   }
 
-  shiftInFlightCtxsDeq := writeBack && writeBackRound.last
+  inFlightCtxsQueue.io.deq.ready := writeBack && writeBackRound.last
 
   io.x := pe.io.x
   io.status := ramInit.io.status

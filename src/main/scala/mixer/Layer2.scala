@@ -7,7 +7,7 @@ import paqFe.util.TreeReduce
 
 class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(ValidIO(new Bundle {
+    val in = Flipped(DecoupledIO(new Bundle {
       val x = Vec(p.nHidden, SInt(p.XWidth))
       val w = Vec(p.nHidden, SInt(p.WeightWidth))
       val reload = Bool()
@@ -15,52 +15,57 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
       val bit = UInt(1.W)
     }))
 
-    val out = ValidIO(new BitProbBundle)
+    val out = DecoupledIO(new BitProbBundle)
     val dw = Output(Vec(p.nHidden, SInt(p.WeightWidth)))
   })
 
-  def sum(a: SInt, b: SInt) = a + b
-  def layerOp(i: Int, x: SInt) = if(i % 2 == 0) RegNext(x) else x
   val sumLatency = log2Ceil(p.VecDotMACNum) / 2
   val vecDotLatency = 2 + sumLatency + 1
+  val probSquashLatency = 1
+  val lossCalculationLatency = 1
+  val latency = vecDotLatency + sumLatency + probSquashLatency + lossCalculationLatency
+  
+  val pipeReady = WireInit(false.B)
 
-  val x = RegEnable(io.in.bits.x, io.in.valid)
-  val w = RegEnable(io.in.bits.w, io.in.valid)
+  def sum(a: SInt, b: SInt) = a + b
+  def layerOp(i: Int, x: SInt) = if(i % 2 == 0) RegEnable(x, pipeReady) else x
+  
+  // data path
+  val x = RegEnable(io.in.bits.x, io.in.valid && pipeReady)
+  val w = RegEnable(io.in.bits.w, io.in.valid && pipeReady)
   val mul = x zip w map {case (x, w) =>
-    RegNext(x * w)
+    RegEnable(x * w, pipeReady)
   }
   val dot = TreeReduce[SInt](mul, sum, layerOp(_,_)) >> 16
 
-  val xQueue = Module(new Queue(Vec(p.nHidden, SInt(p.XWidth)), 8, useSyncReadMem = true))
-  xQueue.io.enq.valid := io.in.valid
+  val xQueue = Module(new Queue(Vec(p.nHidden, SInt(p.XWidth)), latency, useSyncReadMem = true, pipe = true))
+  xQueue.io.enq.valid := io.in.fire
   xQueue.io.enq.bits := io.in.bits.x
-  when(io.in.valid) {
-    assert(xQueue.io.enq.ready, "FIFO full!")
-  }
 
   val dotGt2047 = dot > 2047.S
   val dotLtn2048 = dot < -2048.S
   val probStrech = Wire(SInt(p.XWidth))
-  probStrech := RegNext(Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot)))
+  probStrech := RegEnable(Mux(dotGt2047, 2047.S, Mux(dotLtn2048, -2048.S, dot)), pipeReady)
   
-  val probSquashLatency = 1
-  val probValid = ShiftRegister(io.in.valid, vecDotLatency + probSquashLatency)
-  val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency)
-  val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency)
+  
+  val probValid = ShiftRegister(io.in.fire, vecDotLatency + probSquashLatency, false.B, pipeReady)
+  val bit = ShiftRegister(io.in.bits.bit, vecDotLatency + probSquashLatency, pipeReady)
+  val last = ShiftRegister(io.in.bits.last, vecDotLatency + probSquashLatency, pipeReady)
   val notFirst = RegEnable(~last, false.B, probValid)
-  val prob = if(forceFirstProbEven) Mux(notFirst, RegNext(Squash(probStrech)), 2048.U) else RegNext(Squash(probStrech))
 
-  val lossCalculationLatency = 1
+  val t = RegEnable(Squash(probStrech), pipeReady)
+  val prob = if(forceFirstProbEven) Mux(notFirst, t, 2048.U) else t
+
   val probExpect = 0.U(p.lossWidth) | Cat(bit, 0.U(12.W))
 
   val lr = 4.U
-  val loss = RegNext((probExpect - prob).asSInt * lr)
+  val loss = RegEnable((probExpect - prob).asSInt * lr, pipeReady)
 
-  val lossAccumulateValid = ShiftRegister(probValid, lossCalculationLatency)
-  val lossAccumulateReload = ShiftRegister(io.in.bits.reload, vecDotLatency + probSquashLatency + lossCalculationLatency)
+  val lossAccumulateValid = ShiftRegister(probValid, lossCalculationLatency, false.B, pipeReady)
+  val lossAccumulateReload = ShiftRegister(io.in.bits.reload, vecDotLatency + probSquashLatency + lossCalculationLatency, false.B, pipeReady)
   val dW = Seq.fill(p.nHidden) { RegInit(0.S(p.WeightWidth)) }
   dW zip xQueue.io.deq.bits foreach {case (dw, x) =>
-    when(lossAccumulateValid) {
+    when(lossAccumulateValid && pipeReady) {
       when(lossAccumulateReload) {
         dw := (x * loss) >> 16
       }.otherwise {
@@ -69,10 +74,10 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
     }
   }
 
-  xQueue.io.deq.ready := lossAccumulateValid
-  when(lossAccumulateValid) {
-    assert(xQueue.io.deq.valid, "FIFO empty!")
-  }
+  xQueue.io.deq.ready := lossAccumulateValid && pipeReady
+  pipeReady := io.out.ready
+
+  io.in.ready := pipeReady
 
   io.out.valid := probValid
   io.out.bits.bit := bit
@@ -80,8 +85,6 @@ class MixerLayer2PE(forceFirstProbEven: Boolean = false)(implicit p: MixerParame
   io.out.bits.last := last
 
   io.dw zip dW foreach {case (a, b) => a := b}
-
-  val latency = vecDotLatency + probSquashLatency + lossCalculationLatency
 }
 
 class WeightAdd(implicit p: MixerParameter) extends Module {
@@ -115,12 +118,12 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(new Layer2InputBundle))
 
-    val out = ValidIO(new BitProbBundle())
+    val out = DecoupledIO(new BitProbBundle())
   })
 
   // ctrl singal
   val inReady = WireInit(false.B)
-  val peInValid = WireInit(false.B)
+  val updateStall = WireInit(false.B)
   val peReload = WireInit(false.B)
 
   val weightUpdate = WireInit(false.B)
@@ -135,7 +138,8 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
   pe.io.in.bits.bit := io.in.bits.bit
   pe.io.in.bits.last := io.in.bits.last
   pe.io.in.bits.reload := peReload
-  pe.io.in.valid := peInValid
+  pe.io.in.valid := io.in.valid && ~updateStall
+  io.in.ready := pe.io.in.ready && ~updateStall
 
   Ws zip pe.io.dw foreach {case (a, b) =>
     when(weightReset) {
@@ -154,11 +158,10 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
 
   
   peReload := cnt === 0.U
-  peInValid := io.in.fire
 
   switch(state) {
     is(sLossAcc) {
-      inReady := true.B
+      updateStall := false.B
       cntInc := io.in.fire
 
       when(io.in.fire && io.in.bits.last) {
@@ -169,7 +172,8 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
     }
 
     is(sWait) {
-      cntInc := true.B
+      updateStall := true.B
+      cntInc := io.out.ready
       
       when(cnt === (pe.latency - 1).U) {
         state := sUpdate
@@ -178,6 +182,7 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
 
     is(sUpdate) {
       cntRst := true.B
+      updateStall := true.B
       weightUpdate := true.B
 
       state := sLossAcc
@@ -185,14 +190,14 @@ class MixerLayer2(forceFirstProbEven: Boolean = false)(implicit p: MixerParamete
 
     is(sRest) {
       cntRst := true.B
+      updateStall := true.B
       weightReset := true.B
 
       state := sLossAcc
     }
   }
 
-  io.in.ready := inReady
-  io.out := pe.io.out
+  io.out <> pe.io.out
 
   val latency = pe.latency
 }

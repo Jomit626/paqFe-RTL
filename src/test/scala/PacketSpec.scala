@@ -13,14 +13,14 @@ import org.scalatest.matchers.should.Matchers
 
 import verifydata._
 import types._
-
+import scala.util.Random
 
 class PacketOutputSpec extends AnyFlatSpec
   with ChiselScalatestTester {
   
   behavior of "PacketOutput"
   it should "align output and add end package" in {
-    test(new PacketOutput()).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) { dut =>
+    test(new PacketOutput()).withAnnotations(Seq(VerilatorBackendAnnotation)) { dut =>
       dut.io.in.initSource()
       dut.io.in.setSourceClock(dut.clock)
 
@@ -42,7 +42,10 @@ class PacketOutputSpec extends AnyFlatSpec
       }.fork{
         for(n <- testSizeVector) {
           val data = generateOutputData(n, packetSize)
-          dut.io.out.expectDequeueSeq(data)
+          for(d <- data) {
+            dut.io.out.expectDequeue(d)
+            dut.clock.step(Random.between(0, 8))
+          }
         }
       }.join()
     }

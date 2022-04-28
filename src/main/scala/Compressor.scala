@@ -16,7 +16,7 @@ class CoderAribiter extends Module {
     val out = DecoupledIO(new ByteIdxBundle())
   })
 
-  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 8)))
+  val queues = Seq.fill(8)(Module(new Queue(new ByteBundle(), 4096, useSyncReadMem = true)))
   val arb = Module(new RRArbiter(new ByteBundle(), 8))
 
   (0 until 8).map{ i =>

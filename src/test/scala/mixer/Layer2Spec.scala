@@ -18,38 +18,61 @@ import com.github.tototoshi.csv._
 import chisel3.experimental.VecLiterals._
 
 import paqFe._
+import scala.util.Random
 
 import Layer2Helpers._
-import chisel3.experimental.VecLiterals
 
 class MixerLayer2TestModule(implicit p: MixerParameter) extends Module {
   val io = IO(new Bundle {
     val in = Vec(8, Flipped(DecoupledIO(new Layer2InputBundle)))
 
-    val out = Vec(8,ValidIO(new BitProbBundle()))
+    val out = Vec(8, DecoupledIO(new BitProbBundle()))
   })
 
   for(i <- 0 until 8) {
     val m = Module(new MixerLayer2)
     io.in(i) <> m.io.in
-    io.out(i) := m.io.out
+    io.out(i) <> m.io.out
   }
 }
 
 class MixerLayer2Spec extends SpecClass {
   behavior of "Mixer Layer 2"
   val mixerPredictDB = new VerifyData("./verify/db/mixer-l2")
+  implicit val p = GetMixerConfig()
+
   for(line <- mixerPredictDB.data) {
     val data_name = line(0)
     val input_file = line(1)
     val output_file = line(2)
 
-    implicit val p = GetMixerConfig()
     it should s"match software model with data: $data_name" in {
       test(new MixerLayer2TestModule())
       .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         c.init()
         c.test(output_file)
+      }
+    }
+
+    it should s"tolerate throttling with data: $data_name" in {
+      test(new MixerLayer2TestModule())
+      .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+        c.init()
+        c.test(output_file, true)
+      }
+    }
+  }
+  it should "take multiple streams without reset between and output currect data" in {
+    test(new MixerLayer2TestModule())
+    .withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+
+      c.init()
+      for(line <- mixerPredictDB.data) {
+        val data_name = line(0)
+        val input_file = line(1)
+        val output_file = line(2)
+        
+        c.test(output_file, true)
       }
     }
   }
@@ -70,7 +93,7 @@ implicit class Layer2TestDUT(c: MixerLayer2TestModule)(implicit p: MixerParamete
     }
   }
 
-  def test(dbFile: String) = {
+  def test(dbFile: String, throttle: Boolean = false) = {
     new VerifyDataset(dbFile).forAll { data =>
       assert(data.length % 8 == 0)
       val n = data.length / 8
@@ -110,6 +133,10 @@ implicit class Layer2TestDUT(c: MixerLayer2TestModule)(implicit p: MixerParamete
               _.prob -> prob.U,
               _.last -> (i == n - 1).B,
             ))
+
+            if(throttle) {
+              c.clock.step(4)
+            }
           }
         }
       }
